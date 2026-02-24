@@ -1,3 +1,4 @@
+import { fetch } from "@tauri-apps/plugin-http";
 import type { TranscriptionResult } from "../types";
 
 const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
@@ -27,6 +28,10 @@ export async function transcribeAudio(
   formData.append("language", "zh");
   formData.append("response_format", "text");
 
+  console.log(
+    `[transcriber] Sending ${audioBlob.size} bytes (${audioBlob.type}) to Groq API...`,
+  );
+
   const response = await fetch(GROQ_API_URL, {
     method: "POST",
     headers: {
@@ -42,6 +47,10 @@ export async function transcribeAudio(
 
   const text = (await response.text()).trim();
   const duration = performance.now() - startTime;
+
+  console.log(
+    `[transcriber] Got response in ${Math.round(duration)}ms: "${text}"`,
+  );
 
   return { text, duration };
 }
