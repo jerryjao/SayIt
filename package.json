@@ -1,0 +1,26 @@
+{
+  "name": "whisper-poc",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "vue": "^3.5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@tailwindcss/vite": "^4",
+    "@vitejs/plugin-vue": "^5",
+    "tailwindcss": "^4",
+    "typescript": "^5.7",
+    "vite": "^6",
+    "vue-tsc": "^2"
+  }
+}
