@@ -104,7 +104,6 @@ pub fn run() {
             tauri_plugin_autostart::MacosLauncher::LaunchAgent,
             None,
         ))
-        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(plugins::fn_key_listener::init())
         .invoke_handler(tauri::generate_handler![
             debug_log,
