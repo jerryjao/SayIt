@@ -16,9 +16,15 @@
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-http": "^2.5.7",
     "@tauri-apps/plugin-shell": "^2",
-    "vue": "^3.5"
+    "@tauri-apps/plugin-sql": "^2.3.2",
+    "@tauri-apps/plugin-store": "^2.4.2",
+    "@tauri-apps/plugin-updater": "^2.10.0",
+    "pinia": "^3.0.4",
+    "vue": "^3.5",
+    "vue-router": "5.0.3"
   },
   "devDependencies": {
     "@faker-js/faker": "^10.3.0",

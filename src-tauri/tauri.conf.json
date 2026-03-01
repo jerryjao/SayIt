@@ -29,6 +29,19 @@
         "focus": false,
         "resizable": false,
         "shadow": false
+      },
+      {
+        "label": "main-window",
+        "title": "NoWayLM Voice - Dashboard",
+        "url": "main-window.html",
+        "width": 960,
+        "height": 680,
+        "visible": false,
+        "decorations": true,
+        "resizable": true,
+        "center": true,
+        "minWidth": 720,
+        "minHeight": 480
       }
     ],
     "trayIcon": {

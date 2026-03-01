@@ -1,7 +1,7 @@
 {
   "identifier": "default",
   "description": "Default capability for the main window",
-  "windows": ["main"],
+  "windows": ["main", "main-window"],
   "permissions": [
     "core:default",
     "core:window:default",
@@ -13,7 +13,10 @@
     "core:event:default",
     "core:event:allow-listen",
     "core:event:allow-emit",
+    "core:event:allow-emit-to",
     "shell:allow-open",
+    "sql:default",
+    "store:default",
     {
       "identifier": "http:default",
       "allow": [

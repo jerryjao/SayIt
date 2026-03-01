@@ -1,3 +1,4 @@
+import { resolve } from "node:path";
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import tailwindcss from "@tailwindcss/vite";
@@ -7,6 +8,14 @@ const host = process.env.TAURI_DEV_HOST;
 export default defineConfig({
   plugins: [vue(), tailwindcss()],
   clearScreen: false,
+  build: {
+    rollupOptions: {
+      input: {
+        main: resolve(__dirname, "index.html"),
+        "main-window": resolve(__dirname, "main-window.html"),
+      },
+    },
+  },
   server: {
     port: 1420,
     strictPort: true,
