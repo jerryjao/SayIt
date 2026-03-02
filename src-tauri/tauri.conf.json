@@ -44,11 +44,6 @@
         "minHeight": 480
       }
     ],
-    "trayIcon": {
-      "iconPath": "icons/icon.png",
-      "iconAsTemplate": false,
-      "tooltip": "SayIt"
-    },
     "security": {
       "csp": "default-src 'self'; connect-src 'self' https://api.groq.com; style-src 'self' 'unsafe-inline'; script-src 'self'"
     }

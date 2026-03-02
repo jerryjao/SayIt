@@ -143,7 +143,9 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&open_dashboard_item, &quit_item])?;
 
             TrayIconBuilder::new()
+                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))?)
                 .menu(&menu)
+                .show_menu_on_left_click(true)
                 .tooltip("SayIt")
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open-dashboard" => {
@@ -178,8 +180,22 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .on_window_event(|window, event| {
+            if window.label() == "main-window" {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = window.hide();
+                    println!("[main-window] Close requested → hidden (not destroyed)");
+                }
+            }
+        })
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::Reopen { .. } = event {
+                show_main_window(app_handle);
+            }
+        });
 }
 
 #[cfg(test)]
