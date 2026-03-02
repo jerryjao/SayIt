@@ -174,7 +174,12 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       const audioBlob = await stopRecording();
       const recordingDurationMs = performance.now() - recordingStartTime;
       const settingsStore = useSettingsStore();
-      const apiKey = settingsStore.getApiKey();
+      let apiKey = settingsStore.getApiKey();
+
+      if (!apiKey) {
+        await settingsStore.refreshApiKey();
+        apiKey = settingsStore.getApiKey();
+      }
 
       if (!apiKey) {
         failRecordingFlow(

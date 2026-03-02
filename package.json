@@ -15,6 +15,8 @@
     "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
+    "@tabler/icons-vue": "^3.38.0",
+    "@tanstack/vue-table": "^8.21.3",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-autostart": "^2.5.1",
     "@tauri-apps/plugin-http": "^2.5.7",
@@ -22,10 +24,14 @@
     "@tauri-apps/plugin-sql": "^2.3.2",
     "@tauri-apps/plugin-store": "^2.4.2",
     "@tauri-apps/plugin-updater": "^2.10.0",
+    "@unovis/ts": "^1.6.4",
+    "@unovis/vue": "^1.6.4",
+    "@vueuse/core": "^14.2.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-vue-next": "^0.576.0",
     "pinia": "^3.0.4",
+    "reka-ui": "^2.8.2",
     "tailwind-merge": "^3.5.0",
     "vue": "^3.5",
     "vue-router": "5.0.3"

@@ -116,6 +116,19 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  async function refreshApiKey() {
+    try {
+      const store = await load(STORE_NAME);
+      const savedApiKey = await store.get<string>("groqApiKey");
+      apiKey.value = savedApiKey?.trim() ?? "";
+    } catch (err) {
+      console.error(
+        "[useSettingsStore] refreshApiKey failed:",
+        extractErrorMessage(err),
+      );
+    }
+  }
+
   async function deleteApiKey() {
     try {
       const store = await load(STORE_NAME);
@@ -137,6 +150,7 @@ export const useSettingsStore = defineStore("settings", () => {
     triggerMode,
     hasApiKey,
     getApiKey,
+    refreshApiKey,
     loadSettings,
     saveHotkeyConfig,
     saveApiKey,
