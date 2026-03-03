@@ -1,8 +1,12 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import NotchHud from "../../src/components/NotchHud.vue";
 
 describe("NotchHud", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("[P0] recording 狀態應顯示波形元素和計時器", () => {
     const wrapper = mount(NotchHud, {
       props: {
@@ -112,7 +116,7 @@ describe("NotchHud", () => {
     expect(wrapper.emitted("retry")).toHaveLength(1);
   });
 
-  it("[P1] success 狀態應帶有 notch-green-flash class", () => {
+  it("[P1] success 狀態不應帶有 notch-green-flash class（底色 flash 已移除）", () => {
     const wrapper = mount(NotchHud, {
       props: {
         status: "success",
@@ -122,7 +126,9 @@ describe("NotchHud", () => {
       },
     });
 
-    expect(wrapper.find(".notch-hud").classes()).toContain("notch-green-flash");
+    expect(wrapper.find(".notch-hud").classes()).not.toContain(
+      "notch-green-flash",
+    );
   });
 
   it("[P1] error 狀態應帶有 notch-shake class", () => {
@@ -136,5 +142,84 @@ describe("NotchHud", () => {
     });
 
     expect(wrapper.find(".notch-hud").classes()).toContain("notch-shake");
+  });
+
+  it("[P1] error → idle 應先進入 collapsing 再隱藏", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(NotchHud, {
+      props: {
+        status: "error",
+        analyserHandle: null,
+        recordingElapsedSeconds: 0,
+        message: "",
+      },
+    });
+
+    expect(wrapper.find(".notch-wrapper").exists()).toBe(true);
+
+    await wrapper.setProps({ status: "idle" });
+    await wrapper.vm.$nextTick();
+
+    // collapsing 狀態中仍可見
+    expect(wrapper.find(".notch-wrapper").exists()).toBe(true);
+    expect(wrapper.find(".notch-hud").classes()).toContain("notch-collapsing");
+
+    // 動畫結束後隱藏
+    vi.advanceTimersByTime(400);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".notch-wrapper").exists()).toBe(false);
+  });
+
+  it("[P1] success → idle 應先進入 collapsing 再隱藏", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(NotchHud, {
+      props: {
+        status: "success",
+        analyserHandle: null,
+        recordingElapsedSeconds: 0,
+        message: "",
+      },
+    });
+
+    expect(wrapper.find(".notch-wrapper").exists()).toBe(true);
+
+    await wrapper.setProps({ status: "idle" });
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.find(".notch-wrapper").exists()).toBe(true);
+    expect(wrapper.find(".notch-hud").classes()).toContain("notch-collapsing");
+
+    vi.advanceTimersByTime(400);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".notch-wrapper").exists()).toBe(false);
+  });
+
+  it("[P1] collapsing 期間切換到 recording 應取消收縮", async () => {
+    vi.useFakeTimers();
+    const wrapper = mount(NotchHud, {
+      props: {
+        status: "error",
+        analyserHandle: null,
+        recordingElapsedSeconds: 0,
+        message: "",
+      },
+    });
+
+    await wrapper.setProps({ status: "idle" });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".notch-hud").classes()).toContain("notch-collapsing");
+
+    // 收縮期間切換到 recording
+    await wrapper.setProps({ status: "recording" });
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".notch-wrapper").exists()).toBe(true);
+    expect(wrapper.find(".notch-hud").classes()).not.toContain(
+      "notch-collapsing",
+    );
+
+    // 推進時間後不應隱藏
+    vi.advanceTimersByTime(400);
+    await wrapper.vm.$nextTick();
+    expect(wrapper.find(".notch-wrapper").exists()).toBe(true);
   });
 });

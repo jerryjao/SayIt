@@ -97,6 +97,8 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   let cachedAppWindow: ReturnType<typeof getCurrentWindow> | null = null;
   const unlistenFunctions: UnlistenFn[] = [];
   let autoHideTimer: ReturnType<typeof setTimeout> | null = null;
+  let collapseHideTimer: ReturnType<typeof setTimeout> | null = null;
+  const COLLAPSE_HIDE_DELAY_MS = 400;
   const lastWasModified = ref<boolean | null>(null);
 
   async function readClipboardText(): Promise<string | undefined> {
@@ -129,6 +131,13 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     if (autoHideTimer) {
       clearTimeout(autoHideTimer);
       autoHideTimer = null;
+    }
+  }
+
+  function clearCollapseHideTimer() {
+    if (collapseHideTimer) {
+      clearTimeout(collapseHideTimer);
+      collapseHideTimer = null;
     }
   }
 
@@ -217,16 +226,19 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
 
   function transitionTo(nextStatus: HudStatus, nextMessage = "") {
     clearAutoHideTimer();
+    clearCollapseHideTimer();
     status.value = nextStatus;
     message.value = nextMessage;
     emitVoiceFlowStateChanged(nextStatus, nextMessage);
 
     if (nextStatus === "idle") {
-      hideHud().catch((err) =>
-        writeErrorLog(
-          `useVoiceFlowStore: hideHud failed: ${extractErrorMessage(err)}`,
-        ),
-      );
+      collapseHideTimer = setTimeout(() => {
+        hideHud().catch((err) =>
+          writeErrorLog(
+            `useVoiceFlowStore: hideHud failed: ${extractErrorMessage(err)}`,
+          ),
+        );
+      }, COLLAPSE_HIDE_DELAY_MS);
       return;
     }
 
@@ -288,7 +300,6 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     wasEnhanced: boolean;
   }) {
     try {
-      await hideHud();
       await invoke("paste_text", { text: params.text });
       isRecording.value = false;
       transitionTo("success", params.successMessage);
@@ -539,6 +550,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
 
   function cleanup() {
     clearAutoHideTimer();
+    clearCollapseHideTimer();
     stopElapsedTimer();
     destroyAudioAnalyser();
     analyserHandle.value = null;

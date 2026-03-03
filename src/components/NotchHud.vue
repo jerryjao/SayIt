@@ -10,7 +10,8 @@ type VisualMode =
   | "morphing"
   | "transcribing"
   | "success"
-  | "error";
+  | "error"
+  | "collapsing";
 
 const props = defineProps<{
   status: HudStatus;
@@ -25,6 +26,8 @@ defineEmits<{
 
 const visualMode = ref<VisualMode>("hidden");
 let morphingTimer: ReturnType<typeof setTimeout> | null = null;
+let collapsingTimer: ReturnType<typeof setTimeout> | null = null;
+const COLLAPSE_ANIMATION_DURATION_MS = 400;
 
 const analyserHandleRef = toRef(props, "analyserHandle");
 const { waveformLevelList, startWaveformAnimation, stopWaveformAnimation } =
@@ -49,6 +52,7 @@ const NOTCH_SHAPES: Record<string, NotchShapeParams> = {
   transcribing: { width: 350, height: 42, topRadius: 14, bottomRadius: 22 },
   success: { width: 350, height: 42, topRadius: 14, bottomRadius: 22 },
   error: { width: 350, height: 42, topRadius: 14, bottomRadius: 22 },
+  collapsing: { width: 200, height: 32, topRadius: 10, bottomRadius: 16 },
 };
 
 function buildNotchPath(p: NotchShapeParams): string {
@@ -117,8 +121,7 @@ const waveformElementClass = computed(() => {
 
 const notchHudClassList = computed(() => ({
   "notch-shake": visualMode.value === "error",
-  "notch-green-flash": visualMode.value === "success",
-  "notch-orange-flash": visualMode.value === "error",
+  "notch-collapsing": visualMode.value === "collapsing",
 }));
 
 function clearMorphingTimer() {
@@ -128,14 +131,26 @@ function clearMorphingTimer() {
   }
 }
 
+function clearCollapsingTimer() {
+  if (collapsingTimer) {
+    clearTimeout(collapsingTimer);
+    collapsingTimer = null;
+  }
+}
+
 watch(
   () => props.status,
   (nextStatus) => {
     clearMorphingTimer();
+    clearCollapsingTimer();
 
     if (nextStatus === "idle") {
       stopWaveformAnimation();
-      visualMode.value = "hidden";
+      if (visualMode.value === "hidden") return;
+      visualMode.value = "collapsing";
+      collapsingTimer = setTimeout(() => {
+        visualMode.value = "hidden";
+      }, COLLAPSE_ANIMATION_DURATION_MS);
       return;
     }
 
@@ -177,6 +192,7 @@ watch(
 
 onUnmounted(() => {
   clearMorphingTimer();
+  clearCollapsingTimer();
   stopWaveformAnimation();
 });
 </script>
@@ -251,6 +267,7 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3));
+  animation: notchEnter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .notch-hud {
@@ -258,7 +275,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  animation: notchEnter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
   transition:
     width 0.35s cubic-bezier(0.32, 0.72, 0, 1),
     height 0.35s cubic-bezier(0.32, 0.72, 0, 1),
@@ -346,6 +362,8 @@ onUnmounted(() => {
   width: 6px;
   height: 6px;
   border-radius: 50%;
+  background: transparent;
+  border: 1.5px solid rgba(255, 255, 255, 0.4);
   animation: dotSlide 1.5s ease-in-out infinite;
 }
 .waveform-dot:nth-child(1) { animation-delay: 0s; }
@@ -358,10 +376,10 @@ onUnmounted(() => {
 }
 
 @keyframes dotSlide {
-  0%       { opacity: 1; }
-  60%      { opacity: 1; }
-  60.01%   { opacity: 0.2; }
-  100%     { opacity: 0.2; }
+  0%     { background: white; border-color: white; }
+  50%    { background: white; border-color: white; }
+  50.01% { background: transparent; border-color: rgba(255, 255, 255, 0.4); }
+  100%   { background: transparent; border-color: rgba(255, 255, 255, 0.4); }
 }
 
 /* ---- Success: converge + SVG checkmark ---- */
@@ -420,22 +438,6 @@ onUnmounted(() => {
   }
 }
 
-/* ---- Success flash ---- */
-.notch-green-flash {
-  animation:
-    notchEnter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
-    greenFlash 0.6s ease-out;
-}
-
-/* Gap 6: correct green color */
-@keyframes greenFlash {
-  0% {
-    background: rgba(34, 197, 94, 0.4);
-  }
-  100% {
-    background: black;
-  }
-}
 
 /* ---- Error: scatter + shake ---- */
 .waveform-scatter {
@@ -464,10 +466,7 @@ onUnmounted(() => {
 }
 
 .notch-shake {
-  animation:
-    notchEnter 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
-    notchShake 0.4s ease-out 0.1s,
-    orangeFlash 0.6s ease-out;
+  animation: notchShake 0.4s ease-out 0.1s;
 }
 
 @keyframes notchShake {
@@ -478,15 +477,6 @@ onUnmounted(() => {
   80% { transform: translateX(2px); }
 }
 
-/* Gap 6: correct orange color */
-@keyframes orangeFlash {
-  0% {
-    background: rgba(249, 115, 22, 0.4);
-  }
-  100% {
-    background: black;
-  }
-}
 
 /* ---- Gap 7: Timer font ---- */
 .elapsed-timer {
@@ -535,5 +525,12 @@ onUnmounted(() => {
   color: #f97316;
   font-size: 16px;
   cursor: pointer;
+}
+
+/* ---- Collapsing: 內容淡出 ---- */
+.notch-collapsing .notch-content,
+.notch-collapsing .error-message-row {
+  opacity: 0;
+  transition: opacity 0.15s ease;
 }
 </style>

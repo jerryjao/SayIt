@@ -131,23 +131,26 @@ composables/ → stores/ + lib/
 
 ### NotchHud.vue 當前實作分析
 
-**目前 5 態視覺表現（需中文化）：**
+**目前 5 態視覺表現（已完成 Visual Redesign）：**
 
-| 狀態 | 動畫 | 當前文字（英文） | 改為 |
-|------|------|-----------------|------|
-| recording | 紅點 pulse 1s infinite | "Recording..." | 使用 `message` prop（store 傳「錄音中...」） |
-| transcribing | 白色 spinner spin 0.6s | "Transcribing..." | 使用 `message` prop（store 傳「轉錄中...」） |
-| success | 綠色 ✓ 符號 | "Pasted!" | 使用 `message` prop（store 傳「已貼上 ✓」） |
-| error | 橘色 ⚠ 符號 | `message` prop ✓ | 已使用 prop，不需改 |
-| idle | 隱藏（v-if） | — | — |
+| 狀態 | 動畫 | 說明 |
+|------|------|------|
+| recording | 6 根 bar 山丘形排列（中間高兩側低），bin `[9,4,1,2,6,12]` 純反映頻率能量 | 右側 JetBrains Mono 計時器 |
+| transcribing | 5 個空心圓點（transparent bg + border），dotSlide 動畫依序亮起變實心白 | 掃描波浪效果 |
+| success | 圓點匯聚 + SVG ✓ 描繪 + 邊緣綠色 drop-shadow 光暈 | notch 背景保持純黑，無底色 flash |
+| error | 圓點散開 + notch 抖動（±4px） + 右側 ↻ retry | notch 背景保持純黑，無底色 flash |
+| idle | 隱藏（v-if） | — |
 
-**修改策略：** 將 recording、transcribing、success 三個狀態中的硬編碼英文 `<span>` 改為 `{{ message }}`。保留各狀態的圖示（紅點、spinner、✓）和動畫不變。**Store 不需修改** — `useVoiceFlowStore.ts` 已有中文常數（`RECORDING_MESSAGE = "錄音中..."`、`TRANSCRIBING_MESSAGE = "轉錄中..."`、`PASTE_SUCCESS_MESSAGE = "已貼上 ✓"`），且已透過 `transitionTo()` 設入 `message.value`，App.vue 已透過 `:message` prop 傳遞。
+**修改策略：** Visual Redesign 後，HUD 不再顯示文字，僅用視覺動畫表達狀態。Store 的 `message` prop 保留供錯誤訊息使用。
 
 **動畫效能：**
 - 進入動畫：`notchEnter` 0.25s cubic-bezier（縮放+透明度）
 - 狀態轉換：width/height/clip-path 各 0.35s cubic-bezier transition
 - Notch 形狀：使用 `clip-path` + SVG path 繪製蘋果 Notch 外觀
-- 每個狀態有不同尺寸：recording=360×42, transcribing=360×42, success=320×40, error=380×44
+- 統一尺寸：350×42（collapsing 時縮小為 200×32）
+- 波形 bar：bin 順序 `[9,4,1,2,6,12]`（山丘形），純反映頻率能量，無整體音量底線
+- 轉錄圓點：空心→實心（background + border-color 切換），非 opacity
+- 底色 flash：已移除（greenFlash / orangeFlash），success 只保留邊緣 drop-shadow 綠光，error 只保留 shake
 
 **Auto-hide 計時（已在 store 實作，不需修改）：**
 ```typescript

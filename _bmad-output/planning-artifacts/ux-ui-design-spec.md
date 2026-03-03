@@ -465,6 +465,16 @@ cubic-bezier(0.32, 0.72, 0, 1)     /* Notch 形狀過渡 */
 cubic-bezier(0.34, 1.56, 0.64, 1)  /* Notch 進入彈跳 */
 ```
 
+**HUD 視覺狀態摘要（Visual Redesign 後）：**
+
+| 狀態 | 視覺 | 說明 |
+|------|------|------|
+| recording | 6 根 bar 山丘形排列 + 計時器 | bin `[9,4,1,2,6,12]`，中間高兩側低 |
+| transcribing | 5 個空心圓點依序亮起變實心 | dotSlide 週期 1.5s，掃描波浪效果 |
+| success | 圓點匯聚 + SVG ✓ + 邊緣綠光 | 無底色 flash，背景保持純黑 |
+| error | 圓點散開 + 抖動 + ↻ retry | 無底色 flash，背景保持純黑 |
+| collapsing | 尺寸縮小 200×32 + 內容淡出 | 過渡回 hidden |
+
 ### Vue Transition 命名
 
 ```vue

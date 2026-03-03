@@ -1,7 +1,7 @@
 use arboard::Clipboard;
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Runtime};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClipboardError {
@@ -48,19 +48,13 @@ fn simulate_paste() -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn paste_text<R: Runtime>(app: AppHandle<R>, text: String) -> Result<(), ClipboardError> {
+pub fn paste_text<R: Runtime>(_app: AppHandle<R>, text: String) -> Result<(), ClipboardError> {
     println!("[clipboard-paste] Pasting {} chars: \"{}\"", text.len(), text);
 
-    // 1) Hide Tauri window so target app regains focus
-    if let Some(window) = app.get_webview_window("main") {
-        let _ = window.hide();
-        println!("[clipboard-paste] Window hidden");
-    }
+    // HUD 視窗為 transparent + ignore_cursor_events，不影響目標 app 的 focus。
+    // CGEvent 直接發送到 HID 層級，不依賴視窗 focus，故不需要先隱藏。
 
-    // 2) Wait for OS to switch focus back
-    thread::sleep(Duration::from_millis(200));
-
-    // 3) Write text to clipboard
+    // 1) Write text to clipboard
     let mut clipboard =
         Clipboard::new().map_err(|e| ClipboardError::ClipboardAccess(e.to_string()))?;
 
@@ -68,16 +62,16 @@ pub fn paste_text<R: Runtime>(app: AppHandle<R>, text: String) -> Result<(), Cli
         .set_text(&text)
         .map_err(|e| ClipboardError::ClipboardAccess(e.to_string()))?;
 
-    // 4) Verify clipboard was set
+    // 2) Verify clipboard was set
     match clipboard.get_text() {
         Ok(content) => println!("[clipboard-paste] Clipboard verified: \"{}\"", content),
         Err(e) => println!("[clipboard-paste] Clipboard verify failed: {}", e),
     }
 
-    // 5) Wait for clipboard to settle
+    // 3) Wait for clipboard to settle
     thread::sleep(Duration::from_millis(50));
 
-    // 6) Simulate Cmd+V via CGEvent
+    // 4) Simulate Cmd+V via CGEvent
     #[cfg(target_os = "macos")]
     {
         match simulate_paste() {
@@ -88,7 +82,7 @@ pub fn paste_text<R: Runtime>(app: AppHandle<R>, text: String) -> Result<(), Cli
         }
     }
 
-    // 7) Do NOT restore clipboard — keep transcribed text available for manual paste
+    // 5) Do NOT restore clipboard — keep transcribed text available for manual paste
     println!("[clipboard-paste] Done (clipboard NOT restored)");
     Ok(())
 }

@@ -3,7 +3,7 @@ import { useRafFn } from "@vueuse/core";
 import type { AudioAnalyserHandle } from "../types/audio";
 
 const WAVEFORM_BAR_COUNT = 6;
-const FREQUENCY_BIN_PICK_INDEX_LIST = [1, 3, 5, 8, 12, 16];
+const FREQUENCY_BIN_PICK_INDEX_LIST = [9, 4, 1, 2, 6, 12];
 const DB_FLOOR = -100;
 const DB_CEILING = -20;
 const LERP_SPEED = 0.25;
