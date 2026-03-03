@@ -96,14 +96,14 @@ So that 我隨時知道系統在做什麼，且不會因權限問題卡住。
   - [x] 6.1 `cargo check` 通過 — zero errors（既存 warnings 可接受：objc macro cfg, dead_code）
   - [x] 6.2 `vue-tsc --noEmit` 通過
   - [x] 6.3 `pnpm test` 現有測試通過（確認不 break 既有邏輯）
-  - [ ] 6.4 手動測試：HUD 錄音狀態 — 紅點脈衝 + 「錄音中...」中文文字
-  - [ ] 6.5 手動測試：HUD 轉錄狀態 — spinner + 「轉錄中...」中文文字
-  - [ ] 6.6 手動測試：HUD 成功狀態 — 「已貼上 ✓」→ ~1 秒後自動收起
-  - [ ] 6.7 手動測試：HUD 錯誤狀態 — 中文錯誤訊息 → ~2 秒後自動收起
-  - [ ] 6.8 手動測試：macOS Accessibility 權限未授權 → Main Window 顯示引導畫面
-  - [ ] 6.9 手動測試：macOS Accessibility 引導畫面按鈕 → 開啟系統偏好設定
-  - [ ] 6.10 手動測試：麥克風權限被拒 → HUD 顯示「需要麥克風權限才能錄音」
-  - [ ] 6.11 手動測試：所有 HUD 動畫流暢、無閃爍
+  - [x] 6.4 手動測試：HUD 錄音狀態 — 紅點脈衝 + 「錄音中...」中文文字
+  - [x] 6.5 手動測試：HUD 轉錄狀態 — spinner + 「轉錄中...」中文文字
+  - [x] 6.6 手動測試：HUD 成功狀態 — 「已貼上 ✓」→ ~1 秒後自動收起
+  - [x] 6.7 手動測試：HUD 錯誤狀態 — 中文錯誤訊息 → ~2 秒後自動收起
+  - [ ] 6.8 手動測試：macOS Accessibility 權限未授權 → Main Window 顯示引導畫面（需 build 後測試）
+  - [ ] 6.9 手動測試：macOS Accessibility 引導畫面按鈕 → 開啟系統偏好設定（需 build 後測試）
+  - [ ] 6.10 手動測試：麥克風權限被拒 → HUD 顯示「需要麥克風權限才能錄音」（需 build 後測試）
+  - [x] 6.11 手動測試：所有 HUD 動畫流暢、無閃爍
 
 ## Dev Notes
 
@@ -447,7 +447,8 @@ GPT-5 Codex (CLI)
 - ✅ 完成 HOTKEY_ERROR fallback：偵測 `accessibility_permission` 後開啟並聚焦 `main-window`
 - ✅ 完成麥克風錯誤中文化 helper 並整合至 `handleStartRecording()`，保留英文技術 log
 - ✅ 新增/更新測試：NotchHud 文案、麥克風錯誤映射、accessibility fallback
-- ⚠️ 尚未執行 GUI 手動驗證：Task 6.4 ~ 6.11（需在實機互動測試）
+- ✅ 手動驗證通過（dev 模式）：Task 6.4 ~ 6.7, 6.11（HUD 狀態顯示、動畫流暢）
+- ⚠️ 待 build 後驗證：Task 6.8 ~ 6.10（macOS 權限引導流程，dev 模式下終端機已有權限無法觸發）
 - ✅ [Code Review] 新增 `getTranscriptionErrorMessage()` 完整中文化轉錄錯誤路徑（AC #4）
 - ✅ [Code Review] MainApp.vue 加 `navigator.userAgent` macOS 平台檢查，避免非 macOS 浪費 IPC
 - ✅ [Code Review] NotchHud.vue `v-if` → `v-else-if` 鏈
@@ -476,3 +477,4 @@ GPT-5 Codex (CLI)
 
 - 2026-03-02: 完成 Story 1.5 程式實作與自動化驗證（Task 1~5、Task 6.1~6.3），狀態維持 `in-progress`，待執行手動驗證 6.4~6.11。
 - 2026-03-02: Code Review 修復 — 轉錄錯誤中文化（getTranscriptionErrorMessage）、MainApp 加 macOS 平台檢查、NotchHud v-else-if 鏈、AccessibilityGuide aria-modal + focus trap、補測試。Tests 72 passed。
+- 2026-03-03: 手動驗證通過（dev 模式）：HUD 錄音/轉錄/成功/錯誤狀態顯示正常、動畫流暢。權限引導（6.8~6.10）需 build 後測試（dev 模式下權限授予對象為終端機，非 App bundle）。

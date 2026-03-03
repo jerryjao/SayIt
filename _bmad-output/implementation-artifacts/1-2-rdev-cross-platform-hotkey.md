@@ -12,7 +12,7 @@ So that 我不需要切換到 App 視窗就能隨時啟動語音輸入。
 
 ## Acceptance Criteria
 
-1. **OS 原生跨平台鍵盤監聽** — 重寫 hotkey_listener.rs 使用 OS 原生 API（macOS CGEventTap / Windows SetWindowsHookExW）。macOS 可監聽 Fn、Option、Control、Command、Shift 鍵事件。Windows 可監聽右 Alt、左 Alt、Control、Shift 鍵事件。預設觸發鍵：macOS 為 Fn，Windows 為右 Alt。
+1. **OS 原生跨平台鍵盤監聽** — 重寫 hotkey_listener.rs 使用 OS 原生 API（macOS CGEventTap / Windows SetWindowsHookExW）。macOS 可監聽 Fn、左 Option、右 Option、左 Control、右 Control、Command、Shift 鍵事件（共 7 鍵）。Windows 可監聽右 Alt、左 Alt、Control、Shift 鍵事件。預設觸發鍵：macOS 為 Fn，Windows 為右 Alt。
 
 2. **Hold 模式事件** — 使用者按住觸發鍵時發送 `hotkey:pressed` Tauri Event（payload `{ mode: 'hold', action: 'start' }`），放開時發送 `hotkey:released` Tauri Event（payload `{ mode: 'hold', action: 'stop' }`）。
 
@@ -37,13 +37,13 @@ So that 我不需要切換到 App 視窗就能隨時啟動語音輸入。
     - `is_pressed: AtomicBool` — 防重複觸發
     - `is_toggled_on: AtomicBool` — Toggle 模式開關狀態
   - [x] 2.3 定義 `TriggerKey` enum，包含跨平台按鍵：
-    - macOS: `Fn`（keycode 63）, `Option`（keycode 58）, `Control`（keycode 59）, `Command`（keycode 55）, `Shift`（keycode 56）
+    - macOS: `Fn`（keycode 63）, `Option`（左 keycode 58）, `RightOption`（右 keycode 61）, `Control`（左 keycode 59）, `RightControl`（右 keycode 62）, `Command`（keycode 55）, `Shift`（keycode 56）
     - Windows: `RightAlt`（VK_RMENU + extended flag）, `LeftAlt`（VK_LMENU）, `Control`（VK_LCONTROL）, `Shift`（VK_LSHIFT）
     - 為 `TriggerKey` 實作 `Serialize`/`Deserialize`（供前端 invoke 傳值使用）
   - [x] 2.4 `#[cfg(target_os = "macos")]` 區塊：擴展現有 CGEventTap 實作
     - 保留 `fn_key_listener.rs` 已驗證的 CGEventTap 架構（`CGEventTap::new` + `CFRunLoop`）
-    - 擴展 `FlagsChanged` callback，新增對 Option/Control/Command/Shift 修飾鍵的 keycode 匹配
-    - 修飾鍵 keycode 對照：Fn=63, Option(L)=58, Control(L)=59, Command(L)=55, Shift(L)=56
+    - 擴展 `FlagsChanged` callback，新增對 Option/RightOption/Control/RightControl/Command/Shift 修飾鍵的 keycode 匹配
+    - 修飾鍵 keycode 對照：Fn=63, Option(L)=58, Option(R)=61, Control(L)=59, Control(R)=62, Command(L)=55, Shift(L)=56
     - 修飾鍵對應 CGEventFlags：Option=`CGEventFlagAlternate`, Control=`CGEventFlagControl`, Command=`CGEventFlagCommand`, Shift=`CGEventFlagShift`
     - 依據 `trigger_key` 設定值動態決定監聽哪個鍵，不再寫死 Fn
     - 保留 Accessibility 權限檢查（`AXIsProcessTrusted()` + prompt）
@@ -142,7 +142,7 @@ Shift (L)    56         CGEventFlagShift
 Shift (R)    60         CGEventFlagShift
 ```
 
-**備註：** 左右修飾鍵產生不同 keycode 但同一個 CGEventFlag。目前只監聽左側鍵（56/55/59/58），未來可擴展為左右獨立。Fn 鍵使用 keycode 63 + `CGEventFlagSecondaryFn` 雙重判斷。
+**備註：** 左右修飾鍵產生不同 keycode 但同一個 CGEventFlag。目前 Option 和 Control 支援左右獨立選擇（左 Option keycode 58 / 右 Option keycode 61、左 Control keycode 59 / 右 Control keycode 62）。Fn 鍵使用 keycode 63 + `CGEventFlagSecondaryFn` 雙重判斷。
 
 ### Windows WH_KEYBOARD_LL 實作要點
 
@@ -213,17 +213,17 @@ struct HotkeyListenerState {
 #[derive(Serialize, Deserialize, Clone)]
 enum TriggerKey {
     // macOS（keycode）
-    Fn,          // 63
-    Option,      // 58
-    Control,     // 59
-    Command,     // 55
-    Shift,       // 56
+    Fn,              // 63
+    Option,          // 58 (left)
+    RightOption,     // 61
+    Command,         // 55
     // Windows（VK code）
-    RightAlt,    // VK_MENU + LLKHF_EXTENDED
-    LeftAlt,     // VK_MENU
-    // 共通
-    // Control,  // macOS: 59, Windows: VK_LCONTROL
-    // Shift,    // macOS: 56, Windows: VK_LSHIFT
+    RightAlt,        // VK_MENU + LLKHF_EXTENDED
+    LeftAlt,         // VK_MENU
+    // 跨平台
+    Control,         // macOS: 59 (left), Windows: VK_LCONTROL
+    RightControl,    // macOS: 62
+    Shift,           // macOS: 56, Windows: VK_LSHIFT
 }
 
 enum TriggerMode {
@@ -368,7 +368,7 @@ Claude Opus 4.6
 ### Completion Notes List
 
 - ✅ Task 1: 移除 rdev 0.5.3 和 enigo 0.2 依賴，cargo check 通過
-- ✅ Task 2: 完全重寫 hotkey_listener.rs — macOS CGEventTap 擴展支援 5 鍵（Fn/Option/Control/Command/Shift），Windows WH_KEYBOARD_LL 支援 4 鍵（RightAlt/LeftAlt/Control/Shift），Hold/Toggle 雙模式，動態 trigger_key 切換
+- ✅ Task 2: 完全重寫 hotkey_listener.rs — macOS CGEventTap 擴展支援 7 鍵（Fn/Option/RightOption/Control/RightControl/Command/Shift），Windows WH_KEYBOARD_LL 支援 4 鍵（RightAlt/LeftAlt/Control/Shift），Hold/Toggle 雙模式，動態 trigger_key 切換
 - ✅ Task 3: 新增 update_hotkey_config Tauri Command，支援前端動態變更觸發鍵和模式，config 變更時自動重置 is_pressed/is_toggled_on 狀態
 - ✅ Task 4: 前端事件系統全面更新 — fn-key-down/fn-key-up 替換為 hotkey:pressed/hotkey:released/hotkey:toggled，新增 HotkeyEventPayload 型別，useVoiceFlow.ts 支援 Hold 和 Toggle 雙模式
 - ✅ Task 5: useSettingsStore 實作 loadSettings()/saveHotkeyConfig()，tauri-plugin-store 持久化 + 啟動時同步 Rust + 平台預設值偵測
@@ -386,6 +386,7 @@ Claude Opus 4.6
 
 - 2026-03-01: Story 1.2 完整實作 — 跨平台全域熱鍵系統（OS-native API），移除 rdev/enigo，新增 Hold/Toggle 雙模式，設定持久化
 - 2026-03-02: Code review 修復 — 新增前端 hotkey:error 事件處理、Windows hook 失敗通知前端、Windows hook callback mutex 安全改用 try_lock
+- 2026-03-03: 新增右側修飾鍵支援 — macOS TriggerKey 新增 RightOption（keycode 61）和 RightControl（keycode 62），macOS 觸發鍵選項從 5 → 7 個
 
 ### File List
 

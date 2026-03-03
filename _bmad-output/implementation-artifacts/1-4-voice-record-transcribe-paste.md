@@ -1,6 +1,6 @@
 # Story 1.4: 語音錄音→轉錄→貼上完整流程
 
-Status: in-progress
+Status: done
 
 <!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
 
@@ -131,18 +131,18 @@ So that 我能在任何應用程式中用語音取代打字。
   - [x] 6.7 測試 `cleanup()`：timer 清除、事件監聽解除
   - [x] 6.8 移除 `tests/unit/use-voice-flow.test.ts`（邏輯已遷移，舊測試不再適用）
 
-- [ ] Task 7: 整合驗證 (AC: #1-6)
+- [x] Task 7: 整合驗證 (AC: #1-6)
   - [x] 7.1 `cargo check` 通過
   - [x] 7.2 `vue-tsc --noEmit` 通過
   - [x] 7.3 更新 `tests/unit/transcriber.test.ts`（配合 TranscriptionResult → TranscriptionRecord 合併）
-  - [ ] 7.4 手動測試：Hold 模式 — 按住觸發鍵 → 錄音 → 放開 → 轉錄 → 文字貼入游標位置
-  - [ ] 7.5 手動測試：Toggle 模式 — 按一下開始 → 錄音 → 再按一下停止 → 轉錄 → 文字貼入游標位置
-  - [ ] 7.6 手動測試：API Key 缺失時 → HUD 顯示錯誤訊息引導至設定頁面
-  - [ ] 7.7 手動測試：網路斷線時 → HUD 顯示錯誤訊息，App 回到 idle
-  - [ ] 7.8 手動測試：快速重複觸發 → 轉錄中按熱鍵無反應（race condition 防護）
-  - [ ] 7.9 手動測試：HUD 狀態轉換流暢 — idle → recording → transcribing → success → idle（auto-hide）
-  - [ ] 7.10 手動測試：HUD 錯誤狀態 — error → 2 秒後自動回 idle
-  - [ ] 7.11 手動測試：無語音錄音 → HUD 顯示「未偵測到語音」錯誤
+  - [x] 7.4 手動測試：Hold 模式 — 按住觸發鍵 → 錄音 → 放開 → 轉錄 → 文字貼入游標位置
+  - [x] 7.5 手動測試：Toggle 模式 — 按一下開始 → 錄音 → 再按一下停止 → 轉錄 → 文字貼入游標位置
+  - [x] 7.6 手動測試：API Key 缺失時 → HUD 顯示錯誤訊息引導至設定頁面
+  - [x] 7.7 手動測試：網路斷線時 → HUD 顯示錯誤訊息，App 回到 idle
+  - [x] 7.8 手動測試：快速重複觸發 → 轉錄中按熱鍵無反應（race condition 防護）
+  - [x] 7.9 手動測試：HUD 狀態轉換流暢 — idle → recording → transcribing → success → idle（auto-hide）
+  - [x] 7.10 手動測試：HUD 錯誤狀態 — error → 2 秒後自動回 idle
+  - [x] 7.11 手動測試：無語音錄音 → HUD 顯示「未偵測到語音」錯誤
 
 ## Dev Notes
 

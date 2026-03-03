@@ -4,7 +4,7 @@ user_name: 'Jackle'
 date: '2026-03-03'
 sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules']
 status: 'complete'
-rule_count: 84
+rule_count: 92
 optimized_for_llm: true
 ---
 
@@ -44,7 +44,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `@tanstack/vue-table` | ^8.21.3 | 表格邏輯（DataTable 元件） |
 | `@unovis/ts` + `@unovis/vue` | ^1.6.4 | 圖表庫（shadcn-vue chart 底層） |
 | `class-variance-authority` | ^0.7.1 | CSS 變體管理（shadcn-vue 依賴） |
-| `clsx` + `tailwind-merge` | ^2.1.1 / ^3.5.0 | cn() 工具函式底層 |
+| `clsx` + `tailwind-merge` | ^2.1.1 / ^3.5.0 | `cn()` 工具函式底層（`src/lib/utils.ts`） |
 | `@faker-js/faker` | ^10.3.0 | 開發用假資料（devDependency） |
 
 ### ⚠️ 已安裝但不應使用
@@ -63,6 +63,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `tauri-plugin-autostart` | 2.5.1 | ^2.5.1 | 開機啟動 |
 | `tauri-plugin-updater` | ~2.10.0 | ^2.10.0 | 應用更新 |
 | `tauri-plugin-store` | ~2.4 | ^2.4.2 | 鍵值存儲（API Key） |
+| `tauri-plugin-process` | 2 | ^2.3.1 | App 重啟（自動更新後 relaunch） |
 
 ### Rust Platform Dependencies
 
@@ -74,8 +75,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 ### External APIs
 
-- Groq Whisper API — `https://api.groq.com/openai/v1/audio/transcriptions`（模型：`whisper-large-v3`）
-- Groq LLM API — AI 文字整理（5 秒 timeout）
+- Groq Whisper API — `https://api.groq.com/openai/v1/audio/transcriptions`（模型：`whisper-large-v3`，語言：`zh`）
+- Groq LLM API — `https://api.groq.com/openai/v1/chat/completions`（模型：`llama-3.3-70b-versatile`，temperature: 0.3，timeout: 5s）
 - CSP 白名單：`connect-src 'self' https://api.groq.com`
 
 ## Critical Implementation Rules
@@ -90,8 +91,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **模組系統** — ESNext modules（`"type": "module"`），匯入路徑不帶 `.ts` 副檔名
 - **路徑別名** — `@/*` → `./src/*`（tsconfig.json + vite.config.ts 同步設定）
 - **環境變數前綴** — 前端環境變數必須以 `VITE_` 或 `TAURI_` 開頭
-- **錯誤訊息格式** — `err instanceof Error ? err.message : String(err)` 作為標準錯誤取值模式
-- **錯誤訊息本地化** — 使用 `src/lib/errorUtils.ts` 集中管理使用者可見的錯誤訊息（繁體中文）
+- **錯誤訊息格式** — `err instanceof Error ? err.message : String(err)` 作為標準錯誤取值模式（使用 `extractErrorMessage()` from `errorUtils.ts`）
+- **錯誤訊息本地化** — 使用 `src/lib/errorUtils.ts` 集中管理使用者可見的錯誤訊息（繁體中文），按功能分函式：`getMicrophoneErrorMessage()`, `getTranscriptionErrorMessage()`, `getEnhancementErrorMessage()`
 
 #### Rust
 
@@ -120,6 +121,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Store ID** — kebab-case，如 `defineStore('settings', ...)`
 - **Store 檔案** — `useXxxStore.ts` 放在 `src/stores/`
 - **Store 是唯一的資料存取層** — views 不可直接呼叫 `lib/`，必須透過 store actions
+- **Store 內部結構** — 使用 Setup Store 語法（`defineStore('id', () => { ... })`），搭配 `ref()`, `computed()`, 函式
+- **跨 Store 引用** — Store actions 中可用 `useOtherStore()` 取得其他 store instance（如 `useVoiceFlowStore` 引用 `useSettingsStore`、`useVocabularyStore`、`useHistoryStore`）
 
 #### Vue Router
 
@@ -133,9 +136,24 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Rust → 前端** — `emit()` / `emitTo(windowLabel, event, payload)`
 - **前端監聽** — `listen('event-name', callback)`，元件卸載時 `unlisten()`
 - **Event 命名** — `{domain}:{action}` kebab-case（如 `voice-flow:state-changed`）
+- **Event 封裝** — `src/composables/useTauriEvents.ts` 統一匯出常量和函式：`emitEvent`, `emitToWindow`, `listenToEvent` + 所有 event name 常量
 - **HTTP 請求** — 使用 `@tauri-apps/plugin-http` 的 `fetch`（非瀏覽器原生 fetch），繞過 CORS
 - **視窗操作** — `getCurrentWindow()` 取得當前視窗實例
 - **多入口架構** — HUD（`index.html` → `main.ts` → `App.vue`）和 Dashboard（`main-window.html` → `main-window.ts` → `MainApp.vue`）為獨立入口
+
+#### Tauri Events 完整清單
+
+| Event Name | 常量名 | Direction | Payload |
+|------------|--------|-----------|---------|
+| `voice-flow:state-changed` | `VOICE_FLOW_STATE_CHANGED` | HUD ← VoiceFlow | `VoiceFlowStateChangedPayload` |
+| `transcription:completed` | `TRANSCRIPTION_COMPLETED` | → Main Window | `TranscriptionCompletedPayload` |
+| `settings:updated` | `SETTINGS_UPDATED` | → All Windows | `SettingsUpdatedPayload` |
+| `vocabulary:changed` | `VOCABULARY_CHANGED` | → All Windows | `VocabularyChangedPayload` |
+| `hotkey:pressed` | `HOTKEY_PRESSED` | Rust → HUD | — |
+| `hotkey:released` | `HOTKEY_RELEASED` | Rust → HUD | — |
+| `hotkey:toggled` | `HOTKEY_TOGGLED` | Rust → HUD | `HotkeyEventPayload` |
+| `hotkey:error` | `HOTKEY_ERROR` | Rust → HUD | `HotkeyErrorPayload` |
+| `quality-monitor:result` | `QUALITY_MONITOR_RESULT` | Rust → HUD | `QualityMonitorResultPayload` |
 
 #### Tailwind CSS v4
 
@@ -153,15 +171,18 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **品牌色** — Teal 主題（`pnpm dlx shadcn-vue@latest init --theme teal`）
 - **圖標** — 僅 `lucide-vue-next`，禁止 Emoji 和 `@tabler/icons-vue`
 - **例外** — `NotchHud.vue` 和 `App.vue` 允許手寫 CSS（Notch 動畫引擎）
+- **cn() 工具** — `src/lib/utils.ts` 提供 `cn()` 函式，用於合併 Tailwind class，不可移除或修改
 
 #### SQLite（tauri-plugin-sql）
 
 - **初始化** — `src/lib/database.ts` 定義 schema，`main-window.ts` 中初始化
+- **WAL 模式** — `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;`
 - **表命名** — 複數 snake_case（`transcriptions`, `vocabulary`）
 - **欄位命名** — snake_case（`raw_text`, `was_enhanced`）
-- **主鍵** — `TEXT PRIMARY KEY`（UUID）
+- **主鍵** — `TEXT PRIMARY KEY`（UUID，前端 `crypto.randomUUID()` 產生）
 - **時間戳** — `created_at TEXT DEFAULT (datetime('now'))`
 - **操作限制** — SQLite 操作只從 Pinia store actions 發起，元件不可直接執行 SQL
+- **SQL 參數** — 使用 `$1`, `$2` 位置參數語法（tauri-plugin-sql 規範）
 
 ### Testing Rules
 
@@ -179,6 +200,30 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **E2E 測試** — `tests/e2e/`
 - **覆蓋率排除** — `src/main.ts`、`src/main-window.ts`、`src/**/*.d.ts`
 
+#### 現有測試清單
+
+| 測試檔案 | 測試對象 |
+|----------|---------|
+| `transcriber.test.ts` | Groq Whisper API 呼叫邏輯 |
+| `enhancer.test.ts` | Groq LLM AI 整理邏輯 |
+| `recorder.test.ts` | MediaRecorder 錄音邏輯 |
+| `error-utils.test.ts` | 錯誤訊息本地化 |
+| `auto-updater.test.ts` | 自動更新流程 |
+| `use-voice-flow-store.test.ts` | 錄音→轉錄→AI 整理流程狀態 |
+| `use-history-store.test.ts` | 歷史記錄 CRUD + 統計查詢 |
+| `use-settings-store.test.ts` | 設定讀寫（hotkey, API Key, prompt） |
+| `use-settings-store-autostart.test.ts` | 開機自啟動邏輯 |
+| `factories.test.ts` | 測試資料工廠 |
+| `types.test.ts` | 型別定義驗證 |
+
+#### 測試規則
+
+- **不主動新增測試** — 除非 Story 明確要求或使用者指示，AI agents 不應自行建立測試
+- **型別檢查作為品質門檻** — `vue-tsc --noEmit` 是 build 前自動執行的品質檢查
+- **手動驗證重點** — E2E 流程：熱鍵觸發 → 錄音 → 轉錄 → (AI 整理) → 貼上，以及 HUD 狀態轉換
+- **假資料** — 使用 `@faker-js/faker` 生成測試/開發用資料
+- **Playwright 設定** — 完全並行、60s 測試 timeout、trace on-first-retry、screenshot only-on-failure
+
 #### 測試執行指令
 
 | 指令 | 用途 |
@@ -189,14 +234,6 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `pnpm test:e2e` | Playwright E2E |
 | `pnpm test:e2e:ui` | Playwright UI 模式 |
 
-#### 測試規則
-
-- **不主動新增測試** — 除非 Story 明確要求或使用者指示，AI agents 不應自行建立測試
-- **型別檢查作為品質門檻** — `vue-tsc --noEmit` 是 build 前自動執行的品質檢查
-- **手動驗證重點** — E2E 流程：熱鍵觸發 → 錄音 → 轉錄 → (AI 整理) → 貼上，以及 HUD 狀態轉換
-- **假資料** — 使用 `@faker-js/faker` 生成測試/開發用資料
-- **Playwright 設定** — 完全並行、60s 測試 timeout、trace on-first-retry、screenshot only-on-failure
-
 ### Code Quality & Style Rules
 
 #### 命名慣例
@@ -204,15 +241,15 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | 類型 | 慣例 | 範例 |
 |------|------|------|
 | Vue 元件檔案 | PascalCase | `NotchHud.vue`, `DashboardView.vue` |
-| Composable 檔案 | camelCase + use 前綴 | `useTauriEvents.ts` |
-| Service/Lib 檔案 | camelCase | `recorder.ts`, `transcriber.ts`, `errorUtils.ts` |
+| Composable 檔案 | camelCase + use 前綴 | `useTauriEvents.ts`, `useFeedbackMessage.ts` |
+| Service/Lib 檔案 | camelCase | `recorder.ts`, `transcriber.ts`, `errorUtils.ts`, `formatUtils.ts` |
 | Pinia Store 檔案 | camelCase + use 前綴 | `useSettingsStore.ts`, `useVoiceFlowStore.ts` |
-| Rust 模組檔案 | snake_case | `clipboard_paste.rs`, `hotkey_listener.rs` |
+| Rust 模組檔案 | snake_case | `clipboard_paste.rs`, `hotkey_listener.rs`, `keyboard_monitor.rs` |
 | 資料夾 | kebab-case | `src-tauri/`, `components/` |
 | TS 變數/函式 | camelCase | `startRecording()`, `enhancedText` |
-| TS 型別/介面 | PascalCase + 後綴 | `TranscriptionRecord`, `HotkeyConfig` |
+| TS 型別/介面 | PascalCase + 後綴 | `TranscriptionRecord`, `HotkeyConfig`, `AudioAnalyserHandle` |
 | TS 布林變數 | is/has/can/should 前綴 | `isRecording`, `wasEnhanced`, `hasApiKey` |
-| TS 常數 | UPPER_SNAKE_CASE | `DEFAULT_PROMPT`, `API_TIMEOUT_MS` |
+| TS 常數 | UPPER_SNAKE_CASE | `DEFAULT_SYSTEM_PROMPT`, `ENHANCEMENT_TIMEOUT_MS` |
 | Rust 函式/變數 | snake_case | `paste_text()`, `listen_hotkey()` |
 | Rust 型別/Struct | PascalCase | `ClipboardError`, `HotkeyConfig` |
 | SQLite table | 複數 snake_case | `transcriptions`, `vocabulary` |
@@ -222,12 +259,49 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 #### 檔案組織規則
 
-- **元件** → `src/components/`，**頁面** → `src/views/`
-- **shadcn-vue 元件** → `src/components/ui/`（CLI 生成，不手動修改）
-- **純邏輯（無 Vue 依賴）** → `src/lib/`
-- **Vue 相關邏輯** → `src/composables/` 或 `src/stores/`
-- **型別定義** → `src/types/`（`index.ts`, `settings.ts`, `events.ts`, `transcription.ts`, `vocabulary.ts`）
-- **Rust plugin** → `src-tauri/src/plugins/`，一個檔案一個模組
+```
+src/
+├── components/           # 共用 UI 元件
+│   ├── NotchHud.vue     # HUD 狀態顯示
+│   └── ui/              # shadcn-vue CLI 生成元件（不手動修改）
+├── composables/          # Vue composables（跨元件邏輯）
+│   ├── useTauriEvents.ts    # Tauri Event 常量 + 封裝
+│   ├── useFeedbackMessage.ts # 臨時回饋訊息模式
+│   └── useAudioWaveform.ts  # 音訊視覺化
+├── lib/                  # Service 層（純邏輯，無 Vue 依賴）
+│   ├── recorder.ts          # MediaRecorder 麥克風錄音
+│   ├── transcriber.ts       # Groq Whisper API
+│   ├── enhancer.ts          # Groq LLM AI 整理
+│   ├── database.ts          # SQLite 初始化 + migration
+│   ├── autoUpdater.ts       # tauri-plugin-updater 封裝
+│   ├── errorUtils.ts        # 錯誤訊息本地化（繁體中文）
+│   ├── formatUtils.ts       # 時間/文字格式化工具
+│   └── utils.ts             # cn() shadcn-vue 工具函式
+├── stores/               # Pinia stores
+│   ├── useSettingsStore.ts      # 快捷鍵 / API Key / AI Prompt / 開機啟動
+│   ├── useHistoryStore.ts       # 歷史記錄 CRUD + Dashboard 統計 + 分頁
+│   ├── useVocabularyStore.ts    # 詞彙字典 CRUD
+│   └── useVoiceFlowStore.ts     # 錄音/轉錄/AI 整理/貼上完整流程
+├── views/                # Main Window 頁面
+│   ├── DashboardView.vue    # 統計卡片 + 最近轉錄列表
+│   ├── HistoryView.vue      # 歷史記錄搜尋與管理
+│   ├── DictionaryView.vue   # 詞彙字典 CRUD
+│   └── SettingsView.vue     # 快捷鍵 / API Key / AI Prompt 設定
+├── types/                # TypeScript 型別定義
+│   ├── index.ts             # HudStatus, TriggerMode 等共用型別
+│   ├── transcription.ts     # TranscriptionRecord, DashboardStats
+│   ├── vocabulary.ts        # VocabularyEntry
+│   ├── settings.ts          # TriggerKey (含右側修飾鍵: rightOption, rightControl), HotkeyConfig, SettingsDto
+│   ├── events.ts            # 所有 Tauri Event payload 型別
+│   └── audio.ts             # AudioAnalyserHandle, AudioAnalyserConfig
+├── App.vue              # HUD Window 入口
+├── MainApp.vue          # Main Window 入口
+├── router.ts            # Vue Router hash mode 設定
+├── main.ts              # HUD Window 啟動
+├── main-window.ts       # Main Window 啟動（DB 初始化、設定載入、自動更新）
+└── style.css            # Tailwind 全域樣式 + oklch 變數
+```
+
 - **依賴方向單向** — `views → components + stores + composables`，`stores → lib`，`lib → 外部 API`
 - **禁止** `views/` 直接呼叫 `lib/`，必須透過 store
 
@@ -235,6 +309,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 - **TypeScript** — `console.log("[ModuleName] message")`
 - **Rust** — `println!("[module-name] message")` / `eprintln!("[module-name] ERROR: message")`
+- **Store 日誌** — `[useXxxStore]` 前綴（如 `[useSettingsStore]`）
+- **Rust invoke 日誌** — 使用 `invoke("debug_log", { level, message })` Tauri Command
 - **所有日誌必須帶模組名前綴**
 
 #### Linter/Formatter
@@ -263,7 +339,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | 入口 | HTML | TS 入口 | Vue App | 用途 |
 |------|------|--------|---------|------|
 | HUD | `index.html` | `main.ts` | `App.vue` | Notch 浮動通知視窗 |
-| Dashboard | `main-window.html` | `main-window.ts` | `MainApp.vue` | 主儀表板（含路由、DB 初始化） |
+| Dashboard | `main-window.html` | `main-window.ts` | `MainApp.vue` | 主儀表板（含路由、DB 初始化、自動更新） |
 
 #### Git 慣例
 
@@ -298,10 +374,13 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **❌ 使用 Tailwind 原生色彩** — `zinc-*`, `teal-*`, `red-*` 等全部禁止，用 `bg-primary`, `text-foreground` 等語意變數
 - **❌ 未經設計稿確認就寫 UI** — 所有 UI 實作前必須先在 `design.pen` 完成設計稿並取得使用者確認
 - **❌ 手動修改 `src/components/ui/`** — shadcn CLI 生成的元件不手動修改，透過 `cn()` 在使用端覆蓋
+- **❌ 直接 import Tauri event API** — 使用 `useTauriEvents.ts` 匯出的封裝函式和常量，不直接從 `@tauri-apps/api/event` import
 
 #### 資料映射陷阱
 
-- **SQLite → TypeScript 欄位映射** — SQLite `snake_case` → TS `camelCase`，在 store action 中手動轉換
+- **SQLite → TypeScript 欄位映射** — SQLite `snake_case` → TS `camelCase`，在 store action 中手動轉換（透過 `mapRowToRecord()` / `mapRowToEntry()` 函式）
+- **SQLite 布林值** — SQLite 無布林型別，`was_enhanced INTEGER` → TS `wasEnhanced: row.was_enhanced === 1`
+- **SQLite null 布林** — `was_modified INTEGER | null` → TS `wasModified: row.was_modified === null ? null : row.was_modified === 1`
 - **Tauri Event payload** — 一律 camelCase JSON，不是 Rust 的 snake_case
 - **Rust Command 回傳** — `serde` 預設序列化為 snake_case JSON，前端需對應處理
 
@@ -310,9 +389,11 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Service 層（lib/）** — 拋出有意義的 `Error`，帶上下文訊息
 - **Store 層** — `try/catch` 攔截 → 狀態更新 → 降級策略
 - **Whisper API 失敗** → HUD 顯示錯誤，使用者可重試
-- **LLM API 超時（5 秒）** → 跳過 AI 整理，直接貼上原始文字
+- **LLM API 超時（5 秒）** → 跳過 AI 整理，直接貼上原始文字（`PASTE_SUCCESS_UNENHANCED_MESSAGE`）
+- **Enhancement 字元門檻** — 轉錄文字 < 10 字元跳過 AI 整理，直接貼上
 - **Rust Command 失敗** → `Result<T, E>` 自動轉前端 Promise rejection
 - **錯誤訊息本地化** — `src/lib/errorUtils.ts` 集中管理繁體中文錯誤訊息
+- **自動更新失敗** — 靜默處理，不影響 App 正常使用
 
 #### 安全規則
 
@@ -328,6 +409,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **字數門檻** — 轉錄文字 < 10 字元跳過 AI 整理，直接貼上
 - **idle 記憶體** — 目標 < 100MB
 - **Release binary** — `lto = true`, `opt-level = "s"`, `strip = true`（最小化檔案大小）
+- **History 分頁** — `PAGE_SIZE = 20`，避免一次載入全部記錄
 
 #### Tauri 視窗配置
 
