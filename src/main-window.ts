@@ -11,9 +11,9 @@ import "./style.css";
 
 async function bootstrap() {
   const pinia = createPinia();
-  createApp(MainApp).use(pinia).use(router).mount("#app");
-  await router.isReady();
+  const app = createApp(MainApp).use(pinia).use(router);
 
+  // DB 必須在 mount 之前初始化，否則 View 的 onMounted 會因 getDatabase() 拋錯而全部失敗
   try {
     await initializeDatabase();
   } catch (err) {
@@ -24,6 +24,9 @@ async function bootstrap() {
       message: `Database init failed: ${message}`,
     });
   }
+
+  app.mount("#app");
+  await router.isReady();
 
   const settingsStore = useSettingsStore();
   await settingsStore.loadSettings();

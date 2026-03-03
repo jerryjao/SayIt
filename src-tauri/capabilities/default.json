@@ -10,6 +10,7 @@
     "core:window:allow-set-ignore-cursor-events",
     "core:window:allow-set-focus",
     "core:window:allow-set-position",
+    "core:window:allow-start-dragging",
     "core:window:allow-center",
     "core:event:default",
     "core:event:allow-listen",
@@ -17,6 +18,7 @@
     "core:event:allow-emit-to",
     "shell:allow-open",
     "sql:default",
+    "sql:allow-execute",
     "store:default",
     {
       "identifier": "http:default",
