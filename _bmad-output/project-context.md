@@ -1,10 +1,10 @@
 ---
 project_name: 'sayit'
 user_name: 'Jackle'
-date: '2026-03-03'
+date: '2026-03-04'
 sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules']
 status: 'complete'
-rule_count: 92
+rule_count: 106
 optimized_for_llm: true
 ---
 
@@ -101,7 +101,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **平台隔離** — `#[cfg(target_os = "macos")]` / `#[cfg(target_os = "windows")]` 隔離，不可在同一函式中混合
 - **unsafe 標記** — macOS `objc::msg_send!` 呼叫必須在 `unsafe {}` 區塊內
 - **原子操作** — 跨執行緒共享狀態使用 `AtomicBool` + `Ordering::SeqCst`
-- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出
+- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`）
+- **Serde JSON 序列化** — Rust → 前端的 payload struct 使用 `#[serde(rename_all = "camelCase")]` 確保前端收到 camelCase JSON
 - **Crate 命名** — `name = "sayit_lib"`，`crate-type = ["staticlib", "cdylib", "rlib"]`
 - **Release profile** — `panic = "abort"`, `lto = true`, `opt-level = "s"`（檔案大小最佳化）
 
@@ -175,14 +176,26 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 #### SQLite（tauri-plugin-sql）
 
-- **初始化** — `src/lib/database.ts` 定義 schema，`main-window.ts` 中初始化
+- **初始化** — `src/lib/database.ts` 定義 schema，`main-window.ts` 在 `app.mount()` **之前**呼叫 `initializeDatabase()`（避免 `onMounted` race condition）
+- **Singleton 防禦模式** — `initializeDatabase()` 使用 local `connection` 變數執行所有 schema DDL，**只有全部成功後**才賦值給 module-level `db`。避免「半初始化狀態」——`getDatabase()` 返回無表的空連線
+- **Tauri 權限** — `sql:default` 僅包含 `allow-load/select/close`（唯讀），寫入操作（`CREATE TABLE`, `INSERT`, `UPDATE`, `DELETE`）需要在 `capabilities/default.json` 額外加上 `sql:allow-execute`
 - **WAL 模式** — `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;`
-- **表命名** — 複數 snake_case（`transcriptions`, `vocabulary`）
+- **表命名** — 複數 snake_case（`transcriptions`, `vocabulary`, `api_usage`）
 - **欄位命名** — snake_case（`raw_text`, `was_enhanced`）
 - **主鍵** — `TEXT PRIMARY KEY`（UUID，前端 `crypto.randomUUID()` 產生）
 - **時間戳** — `created_at TEXT DEFAULT (datetime('now'))`
 - **操作限制** — SQLite 操作只從 Pinia store actions 發起，元件不可直接執行 SQL
 - **SQL 參數** — 使用 `$1`, `$2` 位置參數語法（tauri-plugin-sql 規範）
+- **Schema Migration** — `schema_version` 表追蹤版本號，migration 在 `database.ts` 中依序執行（`if (currentVersion < N)` → 建表/改表 → 更新版本號），當前版本：v2
+- **外鍵關聯** — `api_usage.transcription_id` → `transcriptions.id`，新增表時必須同步建立 index
+
+#### API 用量追蹤
+
+- **費用計算** — `src/lib/apiPricing.ts` 提供 `calculateWhisperCostCeiling()` 和 `calculateChatCostCeiling()` 純函式
+- **費用上限原則** — 一律取較貴的費率計算（如 LLM 取 output token 價格 $0.79/M），確保是費用上限而非精確值
+- **Whisper 最低計費** — 不足 10 秒一律按 10 秒算（Groq 計費規則）
+- **api_usage 表** — 每次 API 呼叫存一筆記錄（`whisper` / `chat`），由 `useVoiceFlowStore` 在轉錄/AI 整理完成後透過 `useHistoryStore` 寫入
+- **型別** — `ApiUsageRecord`, `ChatUsageData`, `EnhanceResult`, `DailyUsageTrend`（定義在 `src/types/transcription.ts`）
 
 ### Testing Rules
 
@@ -213,6 +226,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `use-history-store.test.ts` | 歷史記錄 CRUD + 統計查詢 |
 | `use-settings-store.test.ts` | 設定讀寫（hotkey, API Key, prompt） |
 | `use-settings-store-autostart.test.ts` | 開機自啟動邏輯 |
+| `api-pricing.test.ts` | API 費用計算邏輯 |
+| `format-utils.test.ts` | 時間/文字格式化工具 |
 | `factories.test.ts` | 測試資料工廠 |
 | `types.test.ts` | 型別定義驗證 |
 
@@ -263,6 +278,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 src/
 ├── components/           # 共用 UI 元件
 │   ├── NotchHud.vue     # HUD 狀態顯示
+│   ├── DashboardUsageChart.vue # API 用量趨勢圖表（unovis）
 │   └── ui/              # shadcn-vue CLI 生成元件（不手動修改）
 ├── composables/          # Vue composables（跨元件邏輯）
 │   ├── useTauriEvents.ts    # Tauri Event 常量 + 封裝
@@ -276,6 +292,7 @@ src/
 │   ├── autoUpdater.ts       # tauri-plugin-updater 封裝
 │   ├── errorUtils.ts        # 錯誤訊息本地化（繁體中文）
 │   ├── formatUtils.ts       # 時間/文字格式化工具
+│   ├── apiPricing.ts        # API 費用上限計算（Whisper + LLM）
 │   └── utils.ts             # cn() shadcn-vue 工具函式
 ├── stores/               # Pinia stores
 │   ├── useSettingsStore.ts      # 快捷鍵 / API Key / AI Prompt / 開機啟動
@@ -288,8 +305,8 @@ src/
 │   ├── DictionaryView.vue   # 詞彙字典 CRUD
 │   └── SettingsView.vue     # 快捷鍵 / API Key / AI Prompt 設定
 ├── types/                # TypeScript 型別定義
-│   ├── index.ts             # HudStatus, TriggerMode 等共用型別
-│   ├── transcription.ts     # TranscriptionRecord, DashboardStats
+│   ├── index.ts             # HudStatus, TriggerMode, HudTargetPosition 等共用型別
+│   ├── transcription.ts     # TranscriptionRecord, DashboardStats, ApiUsageRecord, DailyUsageTrend
 │   ├── vocabulary.ts        # VocabularyEntry
 │   ├── settings.ts          # TriggerKey (含右側修飾鍵: rightOption, rightControl), HotkeyConfig, SettingsDto
 │   ├── events.ts            # 所有 Tauri Event payload 型別
@@ -341,6 +358,9 @@ src/
 | HUD | `index.html` | `main.ts` | `App.vue` | Notch 浮動通知視窗 |
 | Dashboard | `main-window.html` | `main-window.ts` | `MainApp.vue` | 主儀表板（含路由、DB 初始化、自動更新） |
 
+- **Dashboard 啟動順序** — `main-window.ts` 中必須依序：`createApp().use(pinia).use(router)` → `await initializeDatabase()` → `app.mount("#app")`。DB init 必須在 mount 之前，否則所有 View 的 `onMounted` 會因 `getDatabase()` 拋錯而失敗
+- **HUD 啟動順序** — `App.vue` 的 `onMounted` 中 `await initializeDatabase()` → `voiceFlowStore.initialize()`，因為 HUD 入口 `main.ts` 是同步 mount
+
 #### Git 慣例
 
 - **Commit message** — Conventional Commits 格式（`feat:`, `fix:`, `refactor:` 等）
@@ -375,6 +395,9 @@ src/
 - **❌ 未經設計稿確認就寫 UI** — 所有 UI 實作前必須先在 `design.pen` 完成設計稿並取得使用者確認
 - **❌ 手動修改 `src/components/ui/`** — shadcn CLI 生成的元件不手動修改，透過 `cn()` 在使用端覆蓋
 - **❌ 直接 import Tauri event API** — 使用 `useTauriEvents.ts` 匯出的封裝函式和常量，不直接從 `@tauri-apps/api/event` import
+- **❌ Singleton 提前賦值** — `database.ts` 的 `db` 變數絕不在 `Database.load()` 後立即賦值，必須等所有 `CREATE TABLE` 成功後才設定。否則 `getDatabase()` 返回無表空連線，所有 query 靜默失敗
+- **❌ 假設 `sql:default` 包含寫入權限** — Tauri v2 的 `sql:default` 只有 `load/select/close`，任何 DDL/DML 操作需要額外的 `sql:allow-execute`。新增 Tauri plugin 時務必用 `acl-manifests.json` 確認 default 權限組的實際內容
+- **❌ mount 前未初始化 DB** — `main-window.ts` 中 `app.mount()` 會觸發所有元件的 `onMounted`，若 DB 尚未初始化，Store 的 `getDatabase()` 會拋錯且被 try-catch 靜默吞掉
 
 #### 資料映射陷阱
 
@@ -382,7 +405,7 @@ src/
 - **SQLite 布林值** — SQLite 無布林型別，`was_enhanced INTEGER` → TS `wasEnhanced: row.was_enhanced === 1`
 - **SQLite null 布林** — `was_modified INTEGER | null` → TS `wasModified: row.was_modified === null ? null : row.was_modified === 1`
 - **Tauri Event payload** — 一律 camelCase JSON，不是 Rust 的 snake_case
-- **Rust Command 回傳** — `serde` 預設序列化為 snake_case JSON，前端需對應處理
+- **Rust Command 回傳** — `serde` 預設序列化為 snake_case JSON，前端需對應處理（建議 payload struct 加 `#[serde(rename_all = "camelCase")]`）
 
 #### 錯誤處理鏈路
 
@@ -437,4 +460,4 @@ src/
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-03-03
+Last Updated: 2026-03-04
