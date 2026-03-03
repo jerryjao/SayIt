@@ -264,11 +264,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="p-6 space-y-6 text-foreground">
-    <div>
-      <h1 class="text-2xl font-bold text-foreground">設定</h1>
-      <p class="mt-2 text-muted-foreground">快捷鍵、API Key 與應用程式偏好</p>
-    </div>
-
     <!-- 快捷鍵設定 -->
     <Card>
       <CardHeader class="border-b border-border">
@@ -277,12 +272,12 @@ onBeforeUnmount(() => {
       <CardContent class="space-y-4 pt-5">
         <!-- 觸發鍵 -->
         <div class="flex items-center justify-between">
-          <Label>觸發鍵</Label>
+          <Label for="trigger-key">觸發鍵</Label>
           <Select
             :model-value="settingsStore.hotkeyConfig?.triggerKey"
             @update:model-value="handleTriggerKeyChange($event as TriggerKey)"
           >
-            <SelectTrigger class="w-48">
+            <SelectTrigger id="trigger-key" class="w-48">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -299,7 +294,7 @@ onBeforeUnmount(() => {
 
         <!-- 觸發模式 -->
         <div class="flex items-center justify-between">
-          <Label>觸發模式</Label>
+          <Label for="trigger-mode">觸發模式</Label>
           <div class="flex rounded-lg border border-border overflow-hidden">
             <button
               type="button"
@@ -513,10 +508,11 @@ onBeforeUnmount(() => {
         </p>
 
         <div class="flex items-center justify-between">
-          <Label>{{ thresholdEnabled ? '已啟用' : '已停用' }}</Label>
+          <Label for="threshold-toggle">{{ thresholdEnabled ? '已啟用' : '已停用' }}</Label>
           <Switch
-            :checked="thresholdEnabled"
-            @update:checked="handleToggleEnhancementThreshold"
+            id="threshold-toggle"
+            :model-value="thresholdEnabled"
+            @update:model-value="handleToggleEnhancementThreshold"
           />
         </div>
 
@@ -561,13 +557,14 @@ onBeforeUnmount(() => {
       <CardContent class="pt-5">
         <div class="flex items-center justify-between">
           <div>
-            <Label>開機自動啟動</Label>
+            <Label for="auto-start">開機自動啟動</Label>
             <p class="text-sm text-muted-foreground">登入系統後自動啟動 SayIt</p>
           </div>
           <Switch
-            :checked="settingsStore.isAutoStartEnabled"
+            id="auto-start"
+            :model-value="settingsStore.isAutoStartEnabled"
             :disabled="isTogglingAutoStart"
-            @update:checked="handleToggleAutoStart"
+            @update:model-value="handleToggleAutoStart"
           />
         </div>
 

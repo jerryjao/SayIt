@@ -90,8 +90,36 @@
 4. **❌ SQLite 存 API Key** → 只存 `tauri-plugin-store`
 5. **❌ Tailwind 原生色彩** → 用語意變數（`bg-primary`, `text-foreground`）
 6. **❌ `@tabler/icons-vue`** → 只用 `lucide-vue-next`
-7. **❌ 手寫 UI 元件** → 用 shadcn-vue（new-york style）
+7. **❌ 手寫 UI 元件** → 用 shadcn-vue（new-york style），詳見下方「shadcn-vue 元件使用規則」
 8. **❌ 直接 import Tauri event API** → 用 `useTauriEvents.ts` 封裝
+
+## shadcn-vue 元件使用規則
+
+### 禁止手寫替代品
+
+| 需求 | ❌ 禁止 | ✅ 必須使用 |
+|------|--------|-----------|
+| 側邊欄 | 手寫 `<nav>` | `SidebarProvider` + `Sidebar` + `SidebarMenu` 等 |
+| 側邊欄切換 | 自訂 emit + ref | `SidebarTrigger`（內建 `toggleSidebar()`） |
+| 可點擊元素 | 原生 `<button>` + 手寫樣式 | `<Button>` + variant prop |
+| 表單輸入 | 原生 `<input>` / `<select>` / `<textarea>` | `Input` / `Select` / `Textarea` |
+| 表格 | 原生 `<table>` | `Table` + `TableHeader` + `TableBody` 等 |
+| 開關 | 原生 checkbox | `Switch` |
+
+### 元件 API 規範
+
+- **variant 優先**：用 `variant="destructive"` 而非 `class="text-destructive border-destructive"`
+- **Switch 綁定**：`:model-value` + `@update:model-value`（不是 `:checked`）
+- **Select 綁定**：`:model-value` + `@update:model-value`
+- **Label 無障礙**：Label 必須加 `for` 屬性，對應控制項加 `id`
+- **Badge variant**：用 `variant="secondary"` 等 prop，不用 class 覆蓋整套樣式
+- **RouterLink 在 Menu 中**：`<SidebarMenuButton as-child>` 包裹 `<RouterLink>`
+
+### 樣式規則
+
+- 語意色彩優先：`bg-card` / `text-foreground` / `border-border`
+- 禁止硬編碼：`bg-zinc-900` / `text-white` / `border-zinc-700`
+- 覆蓋元件樣式時只微調（如 padding、size），不覆蓋核心色彩
 
 ## 型別命名慣例
 

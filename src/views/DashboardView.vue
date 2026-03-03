@@ -53,12 +53,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="p-6">
-    <!-- 頁面標題 -->
-    <div class="space-y-1">
-      <h2 class="text-xl font-semibold text-foreground">Dashboard</h2>
-      <p class="text-sm text-muted-foreground">語音轉文字統計總覽</p>
-    </div>
-
     <!-- 統計卡片 -->
     <div class="mt-6 grid grid-cols-3 gap-4">
       <Card>
@@ -163,14 +157,14 @@ onBeforeUnmount(() => {
 
         <!-- 最近列表 -->
         <div v-else class="space-y-2">
-          <button
+          <Button
             v-for="record in historyStore.recentTranscriptionList"
             :key="record.id"
-            type="button"
-            class="w-full rounded-lg border border-border px-4 py-3 text-left transition hover:bg-accent"
+            variant="ghost"
+            class="w-full h-auto rounded-lg border border-border px-4 py-3 text-left flex flex-col items-start"
             @click="navigateToHistory"
           >
-            <div class="flex items-center justify-between gap-2">
+            <div class="flex w-full items-center justify-between gap-2">
               <span class="text-xs text-muted-foreground">
                 {{ formatTimestamp(record.timestamp) }}
               </span>
@@ -181,10 +175,10 @@ onBeforeUnmount(() => {
                 AI 整理
               </Badge>
             </div>
-            <p class="mt-1 text-sm text-muted-foreground truncate">
+            <p class="mt-1 text-sm text-muted-foreground truncate w-full">
               {{ truncateText(getDisplayText(record)) }}
             </p>
-          </button>
+          </Button>
         </div>
       </CardContent>
     </Card>

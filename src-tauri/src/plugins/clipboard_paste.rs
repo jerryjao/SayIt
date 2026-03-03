@@ -48,6 +48,16 @@ fn simulate_paste() -> Result<(), String> {
 }
 
 #[tauri::command]
+pub fn copy_to_clipboard(text: String) -> Result<(), ClipboardError> {
+    let mut clipboard =
+        Clipboard::new().map_err(|e| ClipboardError::ClipboardAccess(e.to_string()))?;
+    clipboard
+        .set_text(&text)
+        .map_err(|e| ClipboardError::ClipboardAccess(e.to_string()))?;
+    Ok(())
+}
+
+#[tauri::command]
 pub fn paste_text<R: Runtime>(_app: AppHandle<R>, text: String) -> Result<(), ClipboardError> {
     println!("[clipboard-paste] Pasting {} chars: \"{}\"", text.len(), text);
 

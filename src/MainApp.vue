@@ -10,6 +10,18 @@ import { computed, markRaw, onMounted, ref } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import AccessibilityGuide from "./components/AccessibilityGuide.vue";
 import SiteHeader from "./components/SiteHeader.vue";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+} from "@/components/ui/sidebar";
 
 const navItems = [
   { path: "/dashboard", label: "Dashboard", icon: markRaw(LayoutDashboard) },
@@ -45,37 +57,51 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex h-screen bg-background text-foreground">
-    <!-- Sidebar -->
-    <nav class="flex w-56 flex-col border-r border-border bg-sidebar">
-      <div class="flex h-14 items-center gap-2 border-b border-border px-4">
-        <span class="text-lg font-semibold text-foreground">SayIt</span>
-      </div>
-      <div class="flex flex-1 flex-col gap-1 p-2">
-        <RouterLink
-          v-for="item in navItems"
-          :key="item.path"
-          :to="item.path"
-          class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          active-class="!bg-accent !text-foreground"
-        >
-          <component :is="item.icon" class="h-4 w-4" />
-          <span>{{ item.label }}</span>
-        </RouterLink>
-      </div>
-    </nav>
+  <!-- macOS Overlay 自訂標題列：fixed z-20 蓋住 Sidebar(z-10)，整條可拖動 -->
+  <div
+    data-tauri-drag-region
+    class="fixed top-0 left-0 right-0 z-20 flex h-9 items-center justify-center border-b border-border bg-background"
+  >
+    <span data-tauri-drag-region class="text-xs font-medium text-muted-foreground select-none">無為-言</span>
+  </div>
 
-    <!-- Main Content -->
-    <main class="flex flex-1 flex-col overflow-hidden">
+  <SidebarProvider class="h-screen !min-h-0 pt-9">
+    <Sidebar collapsible="offcanvas">
+      <SidebarHeader class="flex-row h-12 items-center gap-3 border-b border-sidebar-border px-4">
+        <img src="@/assets/logo-yan.png" alt="言" class="h-7 w-auto" />
+        <span class="text-base font-semibold text-sidebar-foreground">無為</span>
+      </SidebarHeader>
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem v-for="item in navItems" :key="item.path">
+                <SidebarMenuButton
+                  as-child
+                  :is-active="route.path.startsWith(item.path)"
+                >
+                  <RouterLink :to="item.path">
+                    <component :is="item.icon" />
+                    <span>{{ item.label }}</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+    </Sidebar>
+
+    <SidebarInset class="overflow-hidden">
       <SiteHeader :title="currentPageTitle" />
       <div class="flex-1 overflow-y-auto">
         <RouterView />
       </div>
-    </main>
+    </SidebarInset>
+  </SidebarProvider>
 
-    <AccessibilityGuide
-      :visible="showAccessibilityGuide"
-      @close="showAccessibilityGuide = false"
-    />
-  </div>
+  <AccessibilityGuide
+    :visible="showAccessibilityGuide"
+    @close="showAccessibilityGuide = false"
+  />
 </template>

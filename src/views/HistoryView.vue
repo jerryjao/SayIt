@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { invoke } from "@tauri-apps/api/core";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useHistoryStore } from "../stores/useHistoryStore";
 import {
@@ -50,7 +51,7 @@ function handleSearchInput() {
 async function handleCopyText(record: TranscriptionRecord) {
   const textToCopy = getDisplayText(record);
   try {
-    await navigator.clipboard.writeText(textToCopy);
+    await invoke("copy_to_clipboard", { text: textToCopy });
     if (copiedTimer) clearTimeout(copiedTimer);
     copiedRecordId.value = record.id;
     copiedTimer = setTimeout(() => {
@@ -98,22 +99,16 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="p-6">
-    <!-- 頁面標頭 -->
-    <div class="flex items-center justify-between mb-6">
-      <div>
-        <h2 class="text-xl font-semibold text-foreground">歷史記錄</h2>
-        <p class="text-sm text-muted-foreground">瀏覽與搜尋轉錄歷史</p>
-      </div>
-      <div class="relative">
-        <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          v-model="searchInput"
-          type="text"
-          placeholder="搜尋轉錄記錄..."
-          class="w-70 pl-9"
-          @input="handleSearchInput"
-        />
-      </div>
+    <!-- 搜尋列 -->
+    <div class="relative mb-6">
+      <Search class="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      <Input
+        v-model="searchInput"
+        type="text"
+        placeholder="搜尋轉錄記錄..."
+        class="w-full pl-9"
+        @input="handleSearchInput"
+      />
     </div>
 
     <!-- 歷史記錄卡片 -->
@@ -168,6 +163,15 @@ onBeforeUnmount(() => {
                   <span class="text-xs text-muted-foreground">
                     {{ formatDuration(record.recordingDurationMs) }}
                   </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-7 w-7"
+                    @click.stop="handleCopyText(record)"
+                  >
+                    <Check v-if="copiedRecordId === record.id" class="h-3.5 w-3.5 text-green-400" />
+                    <Copy v-else class="h-3.5 w-3.5" />
+                  </Button>
                   <ChevronDown
                     class="h-3.5 w-3.5 text-muted-foreground transition-transform"
                     :class="{ 'rotate-180': expandedRecordId === record.id }"
@@ -224,9 +228,8 @@ onBeforeUnmount(() => {
                   {{ copiedRecordId === record.id ? "已複製" : "複製" }}
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="destructive"
                   size="sm"
-                  class="text-destructive border-destructive hover:bg-destructive/10"
                 >
                   <Trash2 class="h-3.5 w-3.5 mr-1.5" />
                   刪除

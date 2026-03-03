@@ -377,6 +377,7 @@ pub fn run() {
             debug_log,
             update_hotkey_config,
             get_hud_target_position,
+            plugins::clipboard_paste::copy_to_clipboard,
             plugins::clipboard_paste::paste_text,
             plugins::hotkey_listener::check_accessibility_permission_command,
             plugins::hotkey_listener::open_accessibility_settings,
@@ -392,7 +393,8 @@ pub fn run() {
             let menu = Menu::with_items(app, &[&open_dashboard_item, &quit_item])?;
 
             TrayIconBuilder::new()
-                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/icon.png"))?)
+                .icon(tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))?)
+                .icon_as_template(true)
                 .menu(&menu)
                 .show_menu_on_left_click(true)
                 .tooltip("SayIt")

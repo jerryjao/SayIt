@@ -94,14 +94,8 @@ onBeforeUnmount(() => {
 <template>
   <div class="p-6">
     <!-- Page header -->
-    <div class="flex flex-wrap items-start justify-between gap-4">
-      <div class="flex flex-col gap-1">
-        <div class="flex items-center gap-3">
-          <h2 class="text-xl font-semibold text-foreground">自訂字典</h2>
-          <Badge variant="secondary">{{ vocabularyStore.termCount }} 詞彙</Badge>
-        </div>
-        <p class="text-sm text-muted-foreground">管理自訂詞彙以提升轉錄精準度</p>
-      </div>
+    <div class="flex flex-wrap items-center justify-between gap-4">
+      <Badge variant="secondary">{{ vocabularyStore.termCount }} 詞彙</Badge>
 
       <div class="flex items-center gap-2">
         <div class="flex flex-col">
