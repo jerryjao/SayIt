@@ -9,6 +9,14 @@ import { extractErrorMessage } from "../lib/errorUtils";
 import { useFeedbackMessage } from "../composables/useFeedbackMessage";
 import type { TriggerKey } from "../types/settings";
 import type { TriggerMode } from "../types";
+import {
+  LLM_MODEL_LIST,
+  WHISPER_MODEL_LIST,
+  findLlmModelConfig,
+  findWhisperModelConfig,
+  type LlmModelId,
+  type WhisperModelId,
+} from "../lib/modelRegistry";
 
 import {
   Card,
@@ -222,6 +230,39 @@ async function handleSaveThresholdCharCount() {
   }
 }
 
+// ── 模型選擇 ──────────────────────────────────────────────
+const modelFeedback = useFeedbackMessage();
+
+const whisperModelDescription = computed(() => {
+  const config = findWhisperModelConfig(settingsStore.selectedWhisperModelId);
+  if (!config) return "";
+  return `每小時 $${config.costPerHour}`;
+});
+
+const llmModelDescription = computed(() => {
+  const config = findLlmModelConfig(settingsStore.selectedLlmModelId);
+  if (!config) return "";
+  return `${config.speedTps} TPS · $${config.inputCostPerMillion}/$${config.outputCostPerMillion} per M tokens`;
+});
+
+async function handleWhisperModelChange(newId: WhisperModelId) {
+  try {
+    await settingsStore.saveWhisperModel(newId);
+    modelFeedback.show("success", "語音轉錄模型已更新");
+  } catch (err) {
+    modelFeedback.show("error", extractErrorMessage(err));
+  }
+}
+
+async function handleLlmModelChange(newId: LlmModelId) {
+  try {
+    await settingsStore.saveLlmModel(newId);
+    modelFeedback.show("success", "文字整理模型已更新");
+  } catch (err) {
+    modelFeedback.show("error", extractErrorMessage(err));
+  }
+}
+
 // ── 應用程式 ────────────────────────────────────────────────
 const autoStartFeedback = useFeedbackMessage();
 const isTogglingAutoStart = ref(false);
@@ -256,6 +297,7 @@ onBeforeUnmount(() => {
   apiKeyFeedback.clearTimer();
   promptFeedback.clearTimer();
   enhancementThresholdFeedback.clearTimer();
+  modelFeedback.clearTimer();
   autoStartFeedback.clearTimer();
   clearTimeout(deleteConfirmTimeoutId);
   clearTimeout(resetPromptConfirmTimeoutId);
@@ -442,6 +484,84 @@ onBeforeUnmount(() => {
             {{ isConfirmingDeleteApiKey ? '確認刪除？' : '刪除 API Key' }}
           </Button>
         </div>
+      </CardContent>
+    </Card>
+
+    <!-- 模型選擇 -->
+    <Card>
+      <CardHeader class="border-b border-border">
+        <CardTitle class="text-base">模型選擇</CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-5 pt-5">
+        <p class="text-sm text-muted-foreground leading-relaxed">
+          選擇語音轉錄和文字整理使用的 AI 模型。速度較快的模型回應更即時，較大的模型品質更好。
+        </p>
+
+        <!-- Whisper 模型 -->
+        <div class="space-y-2">
+          <Label for="whisper-model">語音轉錄模型（Whisper）</Label>
+          <Select
+            :model-value="settingsStore.selectedWhisperModelId"
+            @update:model-value="handleWhisperModelChange($event as WhisperModelId)"
+          >
+            <SelectTrigger id="whisper-model" class="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="model in WHISPER_MODEL_LIST"
+                :key="model.id"
+                :value="model.id"
+              >
+                <div class="flex items-center gap-2">
+                  <span>{{ model.displayName }}</span>
+                  <Badge v-if="model.isDefault" variant="secondary" class="text-xs">預設</Badge>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p class="text-xs text-muted-foreground">{{ whisperModelDescription }}</p>
+        </div>
+
+        <!-- LLM 模型 -->
+        <div class="space-y-2">
+          <Label for="llm-model">文字整理模型（LLM）</Label>
+          <Select
+            :model-value="settingsStore.selectedLlmModelId"
+            @update:model-value="handleLlmModelChange($event as LlmModelId)"
+          >
+            <SelectTrigger id="llm-model" class="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="model in LLM_MODEL_LIST"
+                :key="model.id"
+                :value="model.id"
+              >
+                <div class="flex items-center gap-2">
+                  <span>{{ model.displayName }}</span>
+                  <Badge v-if="model.isDefault" variant="secondary" class="text-xs">預設</Badge>
+                </div>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <p class="text-xs text-muted-foreground">{{ llmModelDescription }}</p>
+        </div>
+
+        <transition name="feedback-fade">
+          <p
+            v-if="modelFeedback.message.value !== ''"
+            class="text-sm"
+            :class="
+              modelFeedback.type.value === 'success'
+                ? 'text-green-400'
+                : 'text-red-400'
+            "
+          >
+            {{ modelFeedback.message.value }}
+          </p>
+        </transition>
       </CardContent>
     </Card>
 

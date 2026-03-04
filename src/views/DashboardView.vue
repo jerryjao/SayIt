@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from "vue";
+import { computed, onBeforeUnmount, onMounted } from "vue";
 import { useRouter } from "vue-router";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useHistoryStore } from "../stores/useHistoryStore";
+import { useSettingsStore } from "../stores/useSettingsStore";
 import {
   listenToEvent,
   TRANSCRIPTION_COMPLETED,
@@ -13,8 +14,11 @@ import {
   getDisplayText,
   formatDurationFromMs,
   formatNumber,
-  formatCostCeiling,
 } from "../lib/formatUtils";
+import {
+  findLlmModelConfig,
+  findWhisperModelConfig,
+} from "../lib/modelRegistry";
 import DashboardUsageChart from "../components/DashboardUsageChart.vue";
 import {
   Card,
@@ -25,9 +29,63 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 const historyStore = useHistoryStore();
+const settingsStore = useSettingsStore();
 const router = useRouter();
+
+const quotaDimensionList = computed(() => {
+  const usage = historyStore.dashboardStats.dailyQuotaUsage;
+  const wConfig = findWhisperModelConfig(settingsStore.selectedWhisperModelId);
+  const lConfig = findLlmModelConfig(settingsStore.selectedLlmModelId);
+
+  const wRpdLimit = wConfig?.freeQuotaRpd ?? 2000;
+  const wAudioLimitMs = (wConfig?.freeQuotaAudioSecondsPerDay ?? 28800) * 1000;
+  const lRpdLimit = lConfig?.freeQuotaRpd ?? 1000;
+  const lTpdLimit = lConfig?.freeQuotaTpd ?? 100_000;
+
+  return [
+    {
+      remaining: wRpdLimit > 0 ? 1 - usage.whisperRequestCount / wRpdLimit : 0,
+      label: `Whisper ${usage.whisperRequestCount}/${formatNumber(wRpdLimit)} 次`,
+    },
+    {
+      remaining: wAudioLimitMs > 0 ? 1 - usage.whisperBilledAudioMs / wAudioLimitMs : 0,
+      label: `音訊 ${formatDurationFromMs(usage.whisperBilledAudioMs)}/${formatDurationFromMs(wAudioLimitMs)}`,
+    },
+    {
+      remaining: lRpdLimit > 0 ? 1 - usage.llmRequestCount / lRpdLimit : 0,
+      label: `LLM ${usage.llmRequestCount}/${formatNumber(lRpdLimit)} 次`,
+    },
+    {
+      remaining: lTpdLimit > 0 ? 1 - usage.llmTotalTokens / lTpdLimit : 0,
+      label: `LLM ${formatNumber(usage.llmTotalTokens)}/${formatNumber(lTpdLimit)} tokens`,
+    },
+  ];
+});
+
+const quotaRemainingPercent = computed(() => {
+  const minRemaining = Math.min(...quotaDimensionList.value.map((d) => d.remaining));
+  return Math.max(0, minRemaining);
+});
+
+const quotaBottleneckLabel = computed(() => {
+  const sorted = [...quotaDimensionList.value].sort((a, b) => a.remaining - b.remaining);
+  return sorted[0].label;
+});
+
+const quotaBarColorClass = computed(() => {
+  const pct = quotaRemainingPercent.value;
+  if (pct >= 0.5) return "bg-emerald-500";
+  if (pct >= 0.2) return "bg-amber-500";
+  return "bg-destructive";
+});
 
 let unlistenTranscriptionCompleted: UnlistenFn | null = null;
 
@@ -110,17 +168,50 @@ onBeforeUnmount(() => {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader class="pb-2">
-          <CardDescription>API 費用上限</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <p class="text-2xl font-bold text-foreground">
-            {{ formatCostCeiling(historyStore.dashboardStats.totalCostCeiling) }}
-          </p>
-          <p class="text-xs text-muted-foreground mt-1">實際費用不超過此金額</p>
-        </CardContent>
-      </Card>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Card class="cursor-default">
+              <CardHeader class="pb-2">
+                <CardDescription>今日免費額度</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p class="text-2xl font-bold text-foreground">
+                  {{ Math.round(quotaRemainingPercent * 100) }}%
+                </p>
+                <div class="mt-2 h-1.5 w-full rounded-full bg-muted">
+                  <div
+                    class="h-full rounded-full transition-all"
+                    :class="quotaBarColorClass"
+                    :style="{ width: `${Math.round(quotaRemainingPercent * 100)}%` }"
+                  />
+                </div>
+                <p class="text-xs text-muted-foreground mt-1.5 truncate">
+                  {{ quotaBottleneckLabel }}
+                </p>
+              </CardContent>
+            </Card>
+          </TooltipTrigger>
+          <TooltipContent class="w-72 p-3" side="top">
+            <p class="text-xs font-medium mb-2">今日免費額度明細</p>
+            <div class="space-y-2">
+              <div v-for="(dim, idx) in quotaDimensionList" :key="idx">
+                <div class="flex items-center justify-between text-xs">
+                  <span class="text-muted-foreground">{{ dim.label }}</span>
+                  <span class="font-medium">{{ Math.round(Math.max(0, dim.remaining) * 100) }}%</span>
+                </div>
+                <div class="mt-0.5 h-1 w-full rounded-full bg-muted">
+                  <div
+                    class="h-full rounded-full transition-all"
+                    :class="quotaBarColorClass"
+                    :style="{ width: `${Math.round(Math.max(0, dim.remaining) * 100)}%` }"
+                  />
+                </div>
+              </div>
+            </div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
     </div>
 
     <!-- 每日使用趨勢圖表 -->

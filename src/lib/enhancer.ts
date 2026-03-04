@@ -1,8 +1,8 @@
 import { fetch } from "@tauri-apps/plugin-http";
 import type { ChatUsageData, EnhanceResult } from "../types/transcription";
+import { DEFAULT_LLM_MODEL_ID } from "./modelRegistry";
 
 const GROQ_CHAT_API_URL = "https://api.groq.com/openai/v1/chat/completions";
-export const GROQ_LLM_MODEL = "llama-3.3-70b-versatile";
 const ENHANCEMENT_TIMEOUT_MS = 5000;
 const MAX_VOCABULARY_TERMS = 100;
 
@@ -21,6 +21,7 @@ export interface EnhanceOptions {
   systemPrompt?: string;
   clipboardContent?: string;
   vocabularyTermList?: string[];
+  modelId?: string;
 }
 
 interface GroqChatChoice {
@@ -103,7 +104,7 @@ export async function enhanceText(
   );
 
   const body = JSON.stringify({
-    model: GROQ_LLM_MODEL,
+    model: options?.modelId ?? DEFAULT_LLM_MODEL_ID,
     messages: [
       { role: "system", content: fullPrompt },
       { role: "user", content: rawText },

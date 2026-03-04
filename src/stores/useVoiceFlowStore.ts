@@ -12,7 +12,7 @@ import {
   getMicrophoneErrorMessage,
   getTranscriptionErrorMessage,
 } from "../lib/errorUtils";
-import { enhanceText, GROQ_LLM_MODEL } from "../lib/enhancer";
+import { enhanceText } from "../lib/enhancer";
 import { useVocabularyStore } from "./useVocabularyStore";
 import { useHistoryStore } from "./useHistoryStore";
 import type {
@@ -24,7 +24,6 @@ import {
   calculateWhisperCostCeiling,
   calculateChatCostCeiling,
 } from "../lib/apiPricing";
-import { GROQ_MODEL as WHISPER_MODEL } from "../lib/transcriber";
 import {
   initializeMicrophone,
   startRecording,
@@ -372,6 +371,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     chatUsage: ChatUsageData | null,
   ) {
     const historyStore = useHistoryStore();
+    const settingsStore = useSettingsStore();
     const roundedAudioMs = record.recordingDurationMs;
 
     function fireAndForget(usageRecord: ApiUsageRecord) {
@@ -388,7 +388,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       id: crypto.randomUUID(),
       transcriptionId: record.id,
       apiType: "whisper",
-      model: WHISPER_MODEL,
+      model: settingsStore.selectedWhisperModelId,
       promptTokens: null,
       completionTokens: null,
       totalTokens: null,
@@ -396,7 +396,10 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       completionTimeMs: null,
       totalTimeMs: null,
       audioDurationMs: roundedAudioMs,
-      estimatedCostCeiling: calculateWhisperCostCeiling(roundedAudioMs),
+      estimatedCostCeiling: calculateWhisperCostCeiling(
+        roundedAudioMs,
+        settingsStore.selectedWhisperModelId,
+      ),
     });
 
     if (chatUsage) {
@@ -404,7 +407,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         id: crypto.randomUUID(),
         transcriptionId: record.id,
         apiType: "chat",
-        model: GROQ_LLM_MODEL,
+        model: settingsStore.selectedLlmModelId,
         promptTokens: chatUsage.promptTokens,
         completionTokens: chatUsage.completionTokens,
         totalTokens: chatUsage.totalTokens,
@@ -412,7 +415,10 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         completionTimeMs: chatUsage.completionTimeMs,
         totalTimeMs: chatUsage.totalTimeMs,
         audioDurationMs: null,
-        estimatedCostCeiling: calculateChatCostCeiling(chatUsage.totalTokens),
+        estimatedCostCeiling: calculateChatCostCeiling(
+          chatUsage.totalTokens,
+          settingsStore.selectedLlmModelId,
+        ),
       });
     }
   }
@@ -483,6 +489,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         audioBlob,
         apiKey,
         hasVocabulary ? vocabularyTermList : undefined,
+        settingsStore.selectedWhisperModelId,
       );
 
       if (
@@ -510,6 +517,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
             clipboardContent,
             vocabularyTermList:
               vocabularyTermList.length > 0 ? vocabularyTermList : undefined,
+            modelId: settingsStore.selectedLlmModelId,
           });
           const enhancementDurationMs =
             performance.now() - enhancementStartTime;

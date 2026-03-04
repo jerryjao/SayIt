@@ -321,8 +321,8 @@ describe("useHistoryStore", () => {
           total_recording_duration_ms: 0,
         },
       ]);
-      // TOTAL_COST_CEILING_SQL
-      mockDbSelect.mockResolvedValueOnce([{ total_cost_ceiling: 0 }]);
+      // DAILY_QUOTA_USAGE_SQL — 無當日記錄
+      mockDbSelect.mockResolvedValueOnce([]);
 
       const { useHistoryStore } = await import(
         "../../src/stores/useHistoryStore"
@@ -335,7 +335,12 @@ describe("useHistoryStore", () => {
       expect(stats.totalCharacters).toBe(0);
       expect(stats.totalRecordingDurationMs).toBe(0);
       expect(stats.estimatedTimeSavedMs).toBe(0);
-      expect(stats.totalCostCeiling).toBe(0);
+      expect(stats.dailyQuotaUsage).toEqual({
+        whisperRequestCount: 0,
+        whisperBilledAudioMs: 0,
+        llmRequestCount: 0,
+        llmTotalTokens: 0,
+      });
     });
 
     it("[P0] 應使用 SQL 聚合查詢", async () => {
@@ -346,7 +351,7 @@ describe("useHistoryStore", () => {
           total_recording_duration_ms: 0,
         },
       ]);
-      mockDbSelect.mockResolvedValueOnce([{ total_cost_ceiling: 0 }]);
+      mockDbSelect.mockResolvedValueOnce([]);
 
       const { useHistoryStore } = await import(
         "../../src/stores/useHistoryStore"
@@ -361,7 +366,7 @@ describe("useHistoryStore", () => {
       expect(sql).toContain("SUM(recording_duration_ms)");
     });
 
-    it("[P0] 應正確計算節省時間和整合費用上限", async () => {
+    it("[P0] 應正確計算節省時間和整合每日額度用量", async () => {
       // 節省時間 = 600 / 40 * 60000 = 900000ms
       mockDbSelect.mockResolvedValueOnce([
         {
@@ -370,7 +375,21 @@ describe("useHistoryStore", () => {
           total_recording_duration_ms: 120000,
         },
       ]);
-      mockDbSelect.mockResolvedValueOnce([{ total_cost_ceiling: 0.0042 }]);
+      // DAILY_QUOTA_USAGE_SQL
+      mockDbSelect.mockResolvedValueOnce([
+        {
+          api_type: "whisper",
+          request_count: 5,
+          total_tokens: 0,
+          billed_audio_ms: 50000,
+        },
+        {
+          api_type: "chat",
+          request_count: 3,
+          total_tokens: 1500,
+          billed_audio_ms: 30000,
+        },
+      ]);
 
       const { useHistoryStore } = await import(
         "../../src/stores/useHistoryStore"
@@ -383,7 +402,12 @@ describe("useHistoryStore", () => {
       expect(stats.totalCharacters).toBe(600);
       expect(stats.totalRecordingDurationMs).toBe(120000);
       expect(stats.estimatedTimeSavedMs).toBe(900000);
-      expect(stats.totalCostCeiling).toBe(0.0042);
+      expect(stats.dailyQuotaUsage).toEqual({
+        whisperRequestCount: 5,
+        whisperBilledAudioMs: 50000,
+        llmRequestCount: 3,
+        llmTotalTokens: 1500,
+      });
     });
   });
 
@@ -454,8 +478,15 @@ describe("useHistoryStore", () => {
           total_recording_duration_ms: 60000,
         },
       ]);
-      // fetchDashboardStats → TOTAL_COST_CEILING_SQL
-      mockDbSelect.mockResolvedValueOnce([{ total_cost_ceiling: 0.001 }]);
+      // fetchDashboardStats → DAILY_QUOTA_USAGE_SQL
+      mockDbSelect.mockResolvedValueOnce([
+        {
+          api_type: "whisper",
+          request_count: 2,
+          total_tokens: 0,
+          billed_audio_ms: 20000,
+        },
+      ]);
       // fetchRecentTranscriptionList
       mockDbSelect.mockResolvedValueOnce([
         createRawRow({ id: "recent-1" }),
@@ -475,7 +506,10 @@ describe("useHistoryStore", () => {
 
       expect(store.dashboardStats.totalTranscriptions).toBe(5);
       expect(store.dashboardStats.totalCharacters).toBe(200);
-      expect(store.dashboardStats.totalCostCeiling).toBe(0.001);
+      expect(store.dashboardStats.dailyQuotaUsage.whisperRequestCount).toBe(2);
+      expect(store.dashboardStats.dailyQuotaUsage.whisperBilledAudioMs).toBe(
+        20000,
+      );
       expect(store.recentTranscriptionList).toHaveLength(2);
       expect(store.recentTranscriptionList[0].id).toBe("recent-1");
       expect(store.dailyUsageTrendList).toHaveLength(1);
@@ -494,7 +528,12 @@ describe("useHistoryStore", () => {
       expect(store.dashboardStats.totalCharacters).toBe(0);
       expect(store.dashboardStats.totalRecordingDurationMs).toBe(0);
       expect(store.dashboardStats.estimatedTimeSavedMs).toBe(0);
-      expect(store.dashboardStats.totalCostCeiling).toBe(0);
+      expect(store.dashboardStats.dailyQuotaUsage).toEqual({
+        whisperRequestCount: 0,
+        whisperBilledAudioMs: 0,
+        llmRequestCount: 0,
+        llmTotalTokens: 0,
+      });
       expect(store.recentTranscriptionList).toHaveLength(0);
       expect(store.dailyUsageTrendList).toHaveLength(0);
     });
@@ -832,8 +871,8 @@ describe("useHistoryStore", () => {
       mockDbSelect.mockResolvedValueOnce([
         { total_count: 0, total_characters: 0, total_recording_duration_ms: 0 },
       ]);
-      // fetchDashboardStats → TOTAL_COST_CEILING_SQL
-      mockDbSelect.mockResolvedValueOnce([{ total_cost_ceiling: 0 }]);
+      // fetchDashboardStats → DAILY_QUOTA_USAGE_SQL
+      mockDbSelect.mockResolvedValueOnce([]);
       // fetchRecentTranscriptionList
       mockDbSelect.mockResolvedValueOnce([]);
       // fetchDailyUsageTrend
@@ -862,8 +901,8 @@ describe("useHistoryStore", () => {
       mockDbSelect.mockResolvedValueOnce([
         { total_count: 0, total_characters: 0, total_recording_duration_ms: 0 },
       ]);
-      // fetchDashboardStats → TOTAL_COST_CEILING_SQL
-      mockDbSelect.mockResolvedValueOnce([{ total_cost_ceiling: 0 }]);
+      // fetchDashboardStats → DAILY_QUOTA_USAGE_SQL
+      mockDbSelect.mockResolvedValueOnce([]);
       // fetchRecentTranscriptionList
       mockDbSelect.mockResolvedValueOnce([]);
       // fetchDailyUsageTrend

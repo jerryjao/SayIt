@@ -1,4 +1,5 @@
 import type { TriggerMode } from "./index";
+import type { LlmModelId, WhisperModelId } from "../lib/modelRegistry";
 
 export type TriggerKey =
   | "fn"
@@ -22,4 +23,6 @@ export interface SettingsDto {
   aiPrompt: string;
   isEnhancementThresholdEnabled: boolean;
   enhancementThresholdCharCount: number;
+  llmModelId: LlmModelId;
+  whisperModelId: WhisperModelId;
 }

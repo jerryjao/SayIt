@@ -42,6 +42,7 @@ onMounted(async () => {
     () => {
       void settingsStore.refreshApiKey();
       void settingsStore.refreshEnhancementThreshold();
+      void settingsStore.refreshModelSelection();
     },
   );
 

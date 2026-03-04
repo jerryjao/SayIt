@@ -8,6 +8,14 @@ import { extractErrorMessage } from "../lib/errorUtils";
 import { DEFAULT_SYSTEM_PROMPT } from "../lib/enhancer";
 import { emitEvent, SETTINGS_UPDATED } from "../composables/useTauriEvents";
 import type { SettingsUpdatedPayload } from "../types/events";
+import {
+  DEFAULT_LLM_MODEL_ID,
+  DEFAULT_WHISPER_MODEL_ID,
+  getEffectiveLlmModelId,
+  getEffectiveWhisperModelId,
+  type LlmModelId,
+  type WhisperModelId,
+} from "../lib/modelRegistry";
 
 const STORE_NAME = "settings.json";
 
@@ -34,6 +42,8 @@ export const useSettingsStore = defineStore("settings", () => {
   const enhancementThresholdCharCount = ref(
     DEFAULT_ENHANCEMENT_THRESHOLD_CHAR_COUNT,
   );
+  const selectedLlmModelId = ref<LlmModelId>(DEFAULT_LLM_MODEL_ID);
+  const selectedWhisperModelId = ref<WhisperModelId>(DEFAULT_WHISPER_MODEL_ID);
   let isLoaded = false;
 
   function getApiKey(): string {
@@ -83,6 +93,16 @@ export const useSettingsStore = defineStore("settings", () => {
       );
       enhancementThresholdCharCount.value =
         savedThresholdCharCount ?? DEFAULT_ENHANCEMENT_THRESHOLD_CHAR_COUNT;
+
+      const savedLlmModelId = await store.get<string>("llmModelId");
+      selectedLlmModelId.value = getEffectiveLlmModelId(
+        savedLlmModelId ?? null,
+      );
+
+      const savedWhisperModelId = await store.get<string>("whisperModelId");
+      selectedWhisperModelId.value = getEffectiveWhisperModelId(
+        savedWhisperModelId ?? null,
+      );
 
       // Sync saved (or default) config to Rust on startup
       await syncHotkeyConfigToRust(key, mode);
@@ -287,6 +307,69 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  async function saveLlmModel(id: LlmModelId) {
+    try {
+      const store = await load(STORE_NAME);
+      await store.set("llmModelId", id);
+      await store.save();
+      selectedLlmModelId.value = id;
+
+      const payload: SettingsUpdatedPayload = {
+        key: "llmModel",
+        value: id,
+      };
+      await emitEvent(SETTINGS_UPDATED, payload);
+      console.log(`[useSettingsStore] LLM model saved: ${id}`);
+    } catch (err) {
+      console.error(
+        "[useSettingsStore] saveLlmModel failed:",
+        extractErrorMessage(err),
+      );
+      throw err;
+    }
+  }
+
+  async function saveWhisperModel(id: WhisperModelId) {
+    try {
+      const store = await load(STORE_NAME);
+      await store.set("whisperModelId", id);
+      await store.save();
+      selectedWhisperModelId.value = id;
+
+      const payload: SettingsUpdatedPayload = {
+        key: "whisperModel",
+        value: id,
+      };
+      await emitEvent(SETTINGS_UPDATED, payload);
+      console.log(`[useSettingsStore] Whisper model saved: ${id}`);
+    } catch (err) {
+      console.error(
+        "[useSettingsStore] saveWhisperModel failed:",
+        extractErrorMessage(err),
+      );
+      throw err;
+    }
+  }
+
+  async function refreshModelSelection() {
+    try {
+      const store = await load(STORE_NAME);
+      const savedLlmModelId = await store.get<string>("llmModelId");
+      selectedLlmModelId.value = getEffectiveLlmModelId(
+        savedLlmModelId ?? null,
+      );
+      const savedWhisperModelId = await store.get<string>("whisperModelId");
+      selectedWhisperModelId.value = getEffectiveWhisperModelId(
+        savedWhisperModelId ?? null,
+      );
+    } catch (err) {
+      console.error(
+        "[useSettingsStore] refreshModelSelection failed:",
+        extractErrorMessage(err),
+      );
+    }
+  }
+
   async function loadAutoStartStatus() {
     try {
       const { isEnabled } = await import("@tauri-apps/plugin-autostart");
@@ -350,6 +433,8 @@ export const useSettingsStore = defineStore("settings", () => {
     isAutoStartEnabled,
     isEnhancementThresholdEnabled,
     enhancementThresholdCharCount,
+    selectedLlmModelId,
+    selectedWhisperModelId,
     getApiKey,
     getAiPrompt,
     saveAiPrompt,
@@ -361,6 +446,9 @@ export const useSettingsStore = defineStore("settings", () => {
     deleteApiKey,
     saveEnhancementThreshold,
     refreshEnhancementThreshold,
+    saveLlmModel,
+    saveWhisperModel,
+    refreshModelSelection,
     loadAutoStartStatus,
     toggleAutoStart,
     initializeAutoStart,

@@ -78,6 +78,8 @@ const {
       triggerMode: "hold" as string,
       isEnhancementThresholdEnabled: true,
       enhancementThresholdCharCount: 10,
+      selectedLlmModelId: "llama-3.3-70b-versatile",
+      selectedWhisperModelId: "whisper-large-v3",
     },
     mockVocabularyState: {
       termList: [] as Array<{ id: string; term: string; createdAt: string }>,
@@ -145,6 +147,12 @@ vi.mock("../../src/stores/useSettingsStore", () => ({
     get enhancementThresholdCharCount() {
       return mockSettingsState.enhancementThresholdCharCount;
     },
+    get selectedLlmModelId() {
+      return mockSettingsState.selectedLlmModelId;
+    },
+    get selectedWhisperModelId() {
+      return mockSettingsState.selectedWhisperModelId;
+    },
   }),
 }));
 
@@ -208,6 +216,8 @@ describe("useVoiceFlowStore", () => {
     mockSettingsState.triggerMode = "hold";
     mockSettingsState.isEnhancementThresholdEnabled = true;
     mockSettingsState.enhancementThresholdCharCount = 10;
+    mockSettingsState.selectedLlmModelId = "llama-3.3-70b-versatile";
+    mockSettingsState.selectedWhisperModelId = "whisper-large-v3";
     mockVocabularyState.termList = [];
     mockAddTranscription.mockClear().mockResolvedValue(undefined);
     mockAddApiUsage.mockClear().mockResolvedValue(undefined);
@@ -311,6 +321,7 @@ describe("useVoiceFlowStore", () => {
       expect.any(Blob),
       "test-api-key-123",
       undefined,
+      "whisper-large-v3",
     );
     expect(store.status).toBe("success");
     expect(store.message).toBe("已貼上 ✓");
@@ -1035,6 +1046,7 @@ describe("useVoiceFlowStore", () => {
         expect.any(Blob),
         "test-api-key-123",
         ["TypeScript", "Tauri"],
+        "whisper-large-v3",
       );
     });
 
@@ -1058,6 +1070,7 @@ describe("useVoiceFlowStore", () => {
         expect.any(Blob),
         "test-api-key-123",
         undefined,
+        "whisper-large-v3",
       );
     });
 
@@ -1096,6 +1109,7 @@ describe("useVoiceFlowStore", () => {
         expect.any(Blob),
         "test-api-key-123",
         ["Pinia", "Vitest"],
+        "whisper-large-v3",
       );
 
       // enhancer 也收到詞彙
@@ -1104,6 +1118,7 @@ describe("useVoiceFlowStore", () => {
         "test-api-key-123",
         expect.objectContaining({
           vocabularyTermList: ["Pinia", "Vitest"],
+          modelId: "llama-3.3-70b-versatile",
         }),
       );
     });

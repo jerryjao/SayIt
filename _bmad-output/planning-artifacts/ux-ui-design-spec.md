@@ -36,7 +36,7 @@ date: 2026-03-02
 
 任何 UI 實作前，**必須**先在設計稿中完成視覺設計並取得使用者確認。
 
-**設計稿檔案：** `/Users/jackle/workspace/whisper-poc/design.pen`
+**設計稿檔案：** `/Users/jackle/workspace/say-it/design.pen`
 
 **流程：**
 

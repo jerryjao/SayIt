@@ -15,12 +15,19 @@ export interface TranscriptionRecord {
   createdAt: string;
 }
 
+export interface DailyQuotaUsage {
+  whisperRequestCount: number;
+  whisperBilledAudioMs: number;
+  llmRequestCount: number;
+  llmTotalTokens: number;
+}
+
 export interface DashboardStats {
   totalTranscriptions: number;
   totalCharacters: number;
   totalRecordingDurationMs: number;
   estimatedTimeSavedMs: number;
-  totalCostCeiling: number;
+  dailyQuotaUsage: DailyQuotaUsage;
 }
 
 export type ApiType = "whisper" | "chat";

@@ -16,8 +16,9 @@ export interface TranscriptionResult {
   noSpeechProbability: number;
 }
 
+import { DEFAULT_WHISPER_MODEL_ID } from "./modelRegistry";
+
 const GROQ_API_URL = "https://api.groq.com/openai/v1/audio/transcriptions";
-export const GROQ_MODEL = "whisper-large-v3";
 const TRANSCRIPTION_LANGUAGE = "zh";
 const MAX_WHISPER_PROMPT_TERMS = 50;
 
@@ -38,6 +39,7 @@ export async function transcribeAudio(
   audioBlob: Blob,
   apiKey: string,
   vocabularyTermList?: string[],
+  modelId?: string,
 ): Promise<TranscriptionResult> {
   if (apiKey.trim() === "") {
     throw new Error(API_KEY_MISSING_ERROR);
@@ -48,7 +50,7 @@ export async function transcribeAudio(
   const extension = getFileExtensionFromMime(audioBlob.type);
   const formData = new FormData();
   formData.append("file", audioBlob, `recording.${extension}`);
-  formData.append("model", GROQ_MODEL);
+  formData.append("model", modelId ?? DEFAULT_WHISPER_MODEL_ID);
   formData.append("language", TRANSCRIPTION_LANGUAGE);
   formData.append("response_format", "verbose_json");
 

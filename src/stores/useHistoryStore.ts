@@ -3,6 +3,7 @@ import { ref } from "vue";
 import type {
   TranscriptionRecord,
   DashboardStats,
+  DailyQuotaUsage,
   ApiUsageRecord,
   DailyUsageTrend,
 } from "../types/transcription";
@@ -100,8 +101,15 @@ const INSERT_API_USAGE_SQL = `
   ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 `;
 
-const TOTAL_COST_CEILING_SQL = `
-  SELECT COALESCE(SUM(estimated_cost_ceiling), 0) as total_cost_ceiling FROM api_usage
+const DAILY_QUOTA_USAGE_SQL = `
+  SELECT
+    api_type,
+    COUNT(*) as request_count,
+    COALESCE(SUM(total_tokens), 0) as total_tokens,
+    COALESCE(SUM(MAX(COALESCE(audio_duration_ms, 0), 10000)), 0) as billed_audio_ms
+  FROM api_usage
+  WHERE DATE(created_at, 'localtime') = DATE('now', 'localtime')
+  GROUP BY api_type
 `;
 
 const DAILY_USAGE_TREND_SQL = `
@@ -133,8 +141,11 @@ interface DashboardStatsRow {
   total_recording_duration_ms: number;
 }
 
-interface TotalCostCeilingRow {
-  total_cost_ceiling: number;
+interface DailyQuotaUsageRow {
+  api_type: string;
+  request_count: number;
+  total_tokens: number;
+  billed_audio_ms: number;
 }
 
 interface DailyUsageTrendRow {
@@ -263,16 +274,21 @@ export const useHistoryStore = defineStore("history", () => {
     totalCharacters: 0,
     totalRecordingDurationMs: 0,
     estimatedTimeSavedMs: 0,
-    totalCostCeiling: 0,
+    dailyQuotaUsage: {
+      whisperRequestCount: 0,
+      whisperBilledAudioMs: 0,
+      llmRequestCount: 0,
+      llmTotalTokens: 0,
+    },
   });
   const recentTranscriptionList = ref<TranscriptionRecord[]>([]);
   const dailyUsageTrendList = ref<DailyUsageTrend[]>([]);
 
   async function fetchDashboardStats(): Promise<DashboardStats> {
     const db = getDatabase();
-    const [statsRows, costCeiling] = await Promise.all([
+    const [statsRows, dailyQuotaUsage] = await Promise.all([
       db.select<DashboardStatsRow[]>(DASHBOARD_STATS_SQL),
-      fetchTotalCostCeiling(),
+      fetchDailyQuotaUsage(),
     ]);
     const row = statsRows[0] ?? {
       total_count: 0,
@@ -287,7 +303,7 @@ export const useHistoryStore = defineStore("history", () => {
       estimatedTimeSavedMs: Math.round(
         (row.total_characters / ASSUMED_TYPING_SPEED_CHARS_PER_MIN) * 60000,
       ),
-      totalCostCeiling: costCeiling,
+      dailyQuotaUsage,
     };
   }
 
@@ -309,10 +325,28 @@ export const useHistoryStore = defineStore("history", () => {
     ]);
   }
 
-  async function fetchTotalCostCeiling(): Promise<number> {
+  async function fetchDailyQuotaUsage(): Promise<DailyQuotaUsage> {
     const db = getDatabase();
-    const rows = await db.select<TotalCostCeilingRow[]>(TOTAL_COST_CEILING_SQL);
-    return rows[0]?.total_cost_ceiling ?? 0;
+    const rows = await db.select<DailyQuotaUsageRow[]>(DAILY_QUOTA_USAGE_SQL);
+
+    const result: DailyQuotaUsage = {
+      whisperRequestCount: 0,
+      whisperBilledAudioMs: 0,
+      llmRequestCount: 0,
+      llmTotalTokens: 0,
+    };
+
+    for (const row of rows) {
+      if (row.api_type === "whisper") {
+        result.whisperRequestCount = row.request_count;
+        result.whisperBilledAudioMs = row.billed_audio_ms;
+      } else if (row.api_type === "chat") {
+        result.llmRequestCount = row.request_count;
+        result.llmTotalTokens = row.total_tokens;
+      }
+    }
+
+    return result;
   }
 
   async function fetchDailyUsageTrend(days = 30): Promise<DailyUsageTrend[]> {
