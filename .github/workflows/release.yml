@@ -84,7 +84,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          DMG=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          DMG=$(find src-tauri/target -path "*/bundle/dmg/*.dmg" | head -1)
           cp "$DMG" "${{ matrix.stable_name }}"
           gh release upload "v$(jq -r .version src-tauri/tauri.conf.json)" "${{ matrix.stable_name }}" --clobber
 
@@ -94,7 +94,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: pwsh
         run: |
-          $exe = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis\*-setup.exe" | Select-Object -First 1
+          $exe = Get-ChildItem -Path "src-tauri\target" -Recurse -Filter "*-setup.exe" | Select-Object -First 1
           Copy-Item $exe.FullName "${{ matrix.stable_name }}"
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
           gh release upload "v$version" "${{ matrix.stable_name }}" --clobber
