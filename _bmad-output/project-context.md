@@ -1,10 +1,10 @@
 ---
 project_name: 'sayit'
 user_name: 'Jackle'
-date: '2026-03-04'
+date: '2026-03-06'
 sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules']
 status: 'complete'
-rule_count: 106
+rule_count: 112
 optimized_for_llm: true
 ---
 
@@ -70,13 +70,15 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | 套件 | 平台 | 用途 |
 |------|------|------|
 | `core-graphics` 0.24 + `core-foundation` 0.10 + `objc` 0.2 | macOS | 視窗控制、CGEventTap |
-| `windows` 0.61 | Windows | Win32 API、鍵盤 Hook |
+| `core-audio-types` + `coreaudio-sys` | macOS | 系統音量控制（錄音靜音） |
+| `windows` 0.61 | Windows | Win32 API、鍵盤 Hook、IAudioEndpointVolume（系統音量） |
 | `arboard` 3 | 跨平台 | 剪貼簿存取 |
 
 ### External APIs
 
-- Groq Whisper API — `https://api.groq.com/openai/v1/audio/transcriptions`（模型：`whisper-large-v3`，語言：`zh`）
-- Groq LLM API — `https://api.groq.com/openai/v1/chat/completions`（模型：`llama-3.3-70b-versatile`，temperature: 0.3，timeout: 5s）
+- Groq Whisper API — `https://api.groq.com/openai/v1/audio/transcriptions`（預設模型：`whisper-large-v3`，語言：`zh`，可選 `whisper-large-v3-turbo`）
+- Groq LLM API — `https://api.groq.com/openai/v1/chat/completions`（預設模型：`llama-3.3-70b-versatile`，支援 7 個模型切換，temperature: 0.3，timeout: 5s）
+- **模型註冊** — `src/lib/modelRegistry.ts` 集中管理所有可用模型、價格、免費配額，支援模型下架自動遷移（`DECOMMISSIONED_MODEL_MAP`）
 - CSP 白名單：`connect-src 'self' https://api.groq.com`
 
 ## Critical Implementation Rules
@@ -102,7 +104,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **平台隔離** — `#[cfg(target_os = "macos")]` / `#[cfg(target_os = "windows")]` 隔離，不可在同一函式中混合
 - **unsafe 標記** — macOS `objc::msg_send!` 呼叫必須在 `unsafe {}` 區塊內
 - **原子操作** — 跨執行緒共享狀態使用 `AtomicBool` + `Ordering::SeqCst`
-- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`）
+- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`, `audio_control`）
 - **Serde JSON 序列化** — Rust → 前端的 payload struct 使用 `#[serde(rename_all = "camelCase")]` 確保前端收到 camelCase JSON
 - **Crate 命名** — `name = "sayit_lib"`，`crate-type = ["staticlib", "cdylib", "rlib"]`
 - **Release profile** — `panic = "abort"`, `lto = true`, `opt-level = "s"`（檔案大小最佳化）
@@ -222,7 +224,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `enhancer.test.ts` | Groq LLM AI 整理邏輯 |
 | `recorder.test.ts` | MediaRecorder 錄音邏輯 |
 | `error-utils.test.ts` | 錯誤訊息本地化 |
-| `auto-updater.test.ts` | 自動更新流程 |
+| `auto-updater.test.ts` | 自動更新流程（UpdateCheckResult） |
 | `use-voice-flow-store.test.ts` | 錄音→轉錄→AI 整理流程狀態 |
 | `use-history-store.test.ts` | 歷史記錄 CRUD + 統計查詢 |
 | `use-settings-store.test.ts` | 設定讀寫（hotkey, API Key, prompt） |
@@ -231,6 +233,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `format-utils.test.ts` | 時間/文字格式化工具 |
 | `factories.test.ts` | 測試資料工廠 |
 | `types.test.ts` | 型別定義驗證 |
+| `NotchHud.test.ts`（component） | HUD 元件 6 態顯示 |
+| `AccessibilityGuide.test.ts`（component） | 輔助使用權限引導 |
+| `smoke.test.ts`（e2e） | 端對端冒煙測試 |
 
 #### 測試規則
 
@@ -290,7 +295,9 @@ src/
 │   ├── transcriber.ts       # Groq Whisper API
 │   ├── enhancer.ts          # Groq LLM AI 整理
 │   ├── database.ts          # SQLite 初始化 + migration
-│   ├── autoUpdater.ts       # tauri-plugin-updater 封裝
+│   ├── autoUpdater.ts       # tauri-plugin-updater 封裝（回傳 UpdateCheckResult）
+│   ├── modelRegistry.ts     # LLM/Whisper 模型註冊、價格、下架遷移
+│   ├── keycodeMap.ts        # DOM event.code → 平台原生 keycode 映射
 │   ├── errorUtils.ts        # 錯誤訊息本地化（繁體中文）
 │   ├── formatUtils.ts       # 時間/文字格式化工具
 │   ├── apiPricing.ts        # API 費用上限計算（Whisper + LLM）
@@ -372,14 +379,17 @@ src/
 
 - **macOS** — `.dmg`（含 `.app`），Apple Developer ID 簽名 + Notarization
 - **Windows** — NSIS `.exe` + `.msi`
-- **自動更新** — `tauri-plugin-updater` + GitHub Releases endpoint（啟動 5 秒後首次檢查，每 4 小時定時檢查 + Sidebar 手動檢查按鈕）
+- **自動更新** — `tauri-plugin-updater` + GitHub Releases endpoint（啟動 5 秒後首次檢查，每 4 小時 `setInterval` 定時檢查 + Sidebar「檢查更新」按鈕顯示 `UpdateCheckResult` 狀態）
 
 #### CI/CD
 
 - **CI** — `.github/workflows/ci.yml`（push/PR to main → vue-tsc + Vitest）
-- **Release** — `.github/workflows/release.yml`（tag `v*` → 3 平台建構 + Apple 簽名）
-- **發版腳本** — `./scripts/release.sh X.Y.Z`
-- **GitHub Secrets** — 8 個（Tauri signing key + Apple 簽名 6 個）
+- **Release** — `.github/workflows/release.yml`（tag `v*` 或 `workflow_dispatch` → 3 平台建構 + Apple 簽名）
+- **發版腳本** — `./scripts/release.sh X.Y.Z`（bump 版本 → commit → tag → 分開推送 branch/tag）
+- **GitHub Secrets** — 8 個（`TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID`）
+- **Stable-name Assets** — Release workflow 自動上傳固定名稱 DMG/EXE（`SayIt-mac-arm64.dmg`, `SayIt-mac-x64.dmg`, `SayIt-windows-x64.exe`），支援官網固定下載 URL
+- **Release 為 Draft** — `tauri-action` 建立 Draft release，需手動 Publish 或 `gh release edit --draft=false`
+- **Tag 推送陷阱** — `git push origin main --tags` 可能不觸發 tag 事件，必須分開推送（release.sh 已修正）
 
 #### 環境變數
 
@@ -404,6 +414,7 @@ src/
 - **❌ 未經設計稿確認就寫 UI** — 所有 UI 實作前必須先在 `design.pen` 完成設計稿並取得使用者確認
 - **❌ 手動修改 `src/components/ui/`** — shadcn CLI 生成的元件不手動修改，透過 `cn()` 在使用端覆蓋
 - **❌ 直接 import Tauri event API** — 使用 `useTauriEvents.ts` 匯出的封裝函式和常量，不直接從 `@tauri-apps/api/event` import
+- **❌ 錄音時未靜音系統喇叭** — 錄音開始前必須呼叫 `mute_system_audio`，結束後呼叫 `restore_system_audio`，避免系統音效被錄進去
 - **❌ Singleton 提前賦值** — `database.ts` 的 `db` 變數絕不在 `Database.load()` 後立即賦值，必須等所有 `CREATE TABLE` 成功後才設定。否則 `getDatabase()` 返回無表空連線，所有 query 靜默失敗
 - **❌ 假設 `sql:default` 包含寫入權限** — Tauri v2 的 `sql:default` 只有 `load/select/close`，任何 DDL/DML 操作需要額外的 `sql:allow-execute`。新增 Tauri plugin 時務必用 `acl-manifests.json` 確認 default 權限組的實際內容
 - **❌ mount 前未初始化 DB** — `main-window.ts` 中 `app.mount()` 會觸發所有元件的 `onMounted`，若 DB 尚未初始化，Store 的 `getDatabase()` 會拋錯且被 try-catch 靜默吞掉
@@ -425,7 +436,7 @@ src/
 - **Enhancement 字元門檻** — 轉錄文字 < 10 字元跳過 AI 整理，直接貼上
 - **Rust Command 失敗** → `Result<T, E>` 自動轉前端 Promise rejection
 - **錯誤訊息本地化** — `src/lib/errorUtils.ts` 集中管理繁體中文錯誤訊息
-- **自動更新失敗** — 靜默處理，不影響 App 正常使用
+- **自動更新失敗** — 背景檢查靜默處理，手動檢查回傳 `{ status: 'error', error: message }` 供 UI 顯示
 
 #### 安全規則
 
@@ -469,4 +480,4 @@ src/
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-03-04
+Last Updated: 2026-03-06
