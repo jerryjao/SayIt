@@ -17,12 +17,18 @@ jobs:
           - platform: macos-latest
             args: --target aarch64-apple-darwin
             rust_target: aarch64-apple-darwin
+            stable_name: SayIt-mac-arm64.dmg
+            dmg_glob: "*.dmg"
           - platform: macos-latest
             args: --target x86_64-apple-darwin
             rust_target: x86_64-apple-darwin
+            stable_name: SayIt-mac-x64.dmg
+            dmg_glob: "*.dmg"
           - platform: windows-latest
             args: ""
             rust_target: ""
+            stable_name: SayIt-windows-x64.exe
+            dmg_glob: ""
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -67,3 +73,23 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Upload stable-name asset (macOS)
+        if: runner.os == 'macOS'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DMG=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          cp "$DMG" "${{ matrix.stable_name }}"
+          gh release upload "v$(jq -r .version src-tauri/tauri.conf.json)" "${{ matrix.stable_name }}" --clobber
+
+      - name: Upload stable-name asset (Windows)
+        if: runner.os == 'Windows'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path "src-tauri\target\release\bundle\nsis\*-setup.exe" | Select-Object -First 1
+          Copy-Item $exe.FullName "${{ matrix.stable_name }}"
+          $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
+          gh release upload "v$version" "${{ matrix.stable_name }}" --clobber
