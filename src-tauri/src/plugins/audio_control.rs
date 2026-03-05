@@ -172,8 +172,9 @@ mod macos {
 #[cfg(target_os = "windows")]
 mod windows_audio {
     use windows::Win32::Media::Audio::{
-        eConsole, eRender, IAudioEndpointVolume, IMMDeviceEnumerator, MMDeviceEnumerator,
+        eConsole, eRender, IMMDeviceEnumerator, MMDeviceEnumerator,
     };
+    use windows::Win32::Media::Audio::Endpoints::IAudioEndpointVolume;
     use windows::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_ALL, COINIT_APARTMENTTHREADED,
     };
@@ -195,18 +196,19 @@ mod windows_audio {
     /// 初始化 COM 並回傳 scope guard。guard 必須存活到 COM 操作全部完成。
     fn init_com() -> Result<ComGuard, String> {
         unsafe {
-            // S_OK / S_FALSE（windows-rs 皆映射為 Ok）→ 需要配對 CoUninitialize
+            // windows crate 0.61: CoInitializeEx 回傳 HRESULT
+            // S_OK (0) / S_FALSE (1) → 需要配對 CoUninitialize
             // RPC_E_CHANGED_MODE (0x80010106) → 已在其他模式 init，不需 CoUninitialize
-            match CoInitializeEx(None, COINIT_APARTMENTTHREADED) {
-                Ok(()) => Ok(ComGuard { should_uninit: true }),
-                Err(e) => {
-                    let code = e.code().0 as u32;
-                    if code == 0x80010106 {
-                        println!("[audio-control] COM already initialized in different mode, continuing");
-                        Ok(ComGuard { should_uninit: false })
-                    } else {
-                        Err(format!("CoInitializeEx failed: {}", e))
-                    }
+            let hr = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            if hr.is_ok() {
+                Ok(ComGuard { should_uninit: true })
+            } else {
+                let code = hr.0 as u32;
+                if code == 0x80010106 {
+                    println!("[audio-control] COM already initialized in different mode, continuing");
+                    Ok(ComGuard { should_uninit: false })
+                } else {
+                    Err(format!("CoInitializeEx failed: HRESULT 0x{:08X}", code))
                 }
             }
         }
