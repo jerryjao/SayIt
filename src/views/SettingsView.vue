@@ -38,8 +38,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  AtSign,
+  CircleAlert,
+  Facebook,
+  Github,
+  Globe,
+  Instagram,
+} from "lucide-vue-next";
 
 const settingsStore = useSettingsStore();
 
@@ -454,12 +463,61 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="p-6 space-y-6 text-foreground">
+    <!-- 關於 SayIt -->
+    <Card>
+      <CardHeader class="border-b border-border">
+        <CardTitle class="text-base">關於 SayIt</CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <div class="space-y-1">
+          <p class="text-sm text-muted-foreground">
+            按住說話，放開貼上。SayIt 是開源的桌面語音轉文字工具，採用 MIT 授權。
+          </p>
+          <p class="text-sm text-muted-foreground">
+            作者：<a href="https://jackle.pro" target="_blank" rel="noopener noreferrer" class="font-medium text-foreground hover:text-primary transition-colors">Jackle Chen</a>
+          </p>
+        </div>
+
+        <div class="flex flex-wrap gap-x-4 gap-y-2">
+          <a href="https://jackle.pro" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
+            <Globe class="size-4" />
+            <span>個人網站</span>
+          </a>
+          <a href="https://www.facebook.com/jackle45" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
+            <Facebook class="size-4" />
+            <span>Facebook</span>
+          </a>
+          <a href="https://www.instagram.com/jackle9527" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
+            <Instagram class="size-4" />
+            <span>Instagram</span>
+          </a>
+          <a href="https://www.threads.com/@jackle9527" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
+            <AtSign class="size-4" />
+            <span>Threads</span>
+          </a>
+        </div>
+
+        <Separator />
+
+        <div class="flex flex-wrap gap-x-4 gap-y-2">
+          <a href="https://github.com/chenjackle45/SayIt" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
+            <Github class="size-4" />
+            <span>查看原始碼</span>
+          </a>
+          <a href="https://github.com/chenjackle45/SayIt/issues" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
+            <CircleAlert class="size-4" />
+            <span>回報問題</span>
+          </a>
+        </div>
+      </CardContent>
+    </Card>
+
     <!-- 快捷鍵設定 -->
     <Card>
       <CardHeader class="border-b border-border">
         <CardTitle class="text-base">快捷鍵設定</CardTitle>
       </CardHeader>
-      <CardContent class="space-y-4 pt-5">
+      <CardContent class="space-y-4">
         <!-- 簡易 / 自訂 模式切換 -->
         <div class="flex items-center justify-between">
           <Label>觸發鍵模式</Label>
@@ -623,7 +681,7 @@ onBeforeUnmount(() => {
           前往 Groq Console &rarr;
         </a>
       </CardHeader>
-      <CardContent class="space-y-4 pt-5">
+      <CardContent class="space-y-4">
         <p class="text-sm text-muted-foreground leading-relaxed">
           請在
           <a
@@ -705,7 +763,7 @@ onBeforeUnmount(() => {
       <CardHeader class="border-b border-border">
         <CardTitle class="text-base">模型選擇</CardTitle>
       </CardHeader>
-      <CardContent class="space-y-5 pt-5">
+      <CardContent class="space-y-5">
         <p class="text-sm text-muted-foreground leading-relaxed">
           選擇語音轉錄和文字整理使用的 AI 模型。速度較快的模型回應更即時，較大的模型品質更好。
         </p>
@@ -783,7 +841,7 @@ onBeforeUnmount(() => {
       <CardHeader class="border-b border-border">
         <CardTitle class="text-base">AI 整理 Prompt</CardTitle>
       </CardHeader>
-      <CardContent class="space-y-4 pt-5">
+      <CardContent class="space-y-4">
         <p class="text-sm text-muted-foreground">
           自訂 AI 整理文字時使用的系統提示詞。修改後點擊儲存。
         </p>
@@ -835,7 +893,7 @@ onBeforeUnmount(() => {
       <CardHeader class="border-b border-border">
         <CardTitle class="text-base">短文字門檻</CardTitle>
       </CardHeader>
-      <CardContent class="space-y-4 pt-5">
+      <CardContent class="space-y-4">
         <p class="text-sm text-muted-foreground leading-relaxed">
           啟用後，低於指定字數的轉錄文字將跳過 AI 整理，直接貼上原文。停用則每次都做 AI 整理。
         </p>
@@ -887,7 +945,7 @@ onBeforeUnmount(() => {
       <CardHeader class="border-b border-border">
         <CardTitle class="text-base">應用程式</CardTitle>
       </CardHeader>
-      <CardContent class="pt-5 space-y-4">
+      <CardContent class="space-y-4">
         <div class="flex items-center justify-between">
           <div>
             <Label for="mute-on-recording">錄音時自動靜音</Label>
