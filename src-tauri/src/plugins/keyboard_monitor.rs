@@ -22,10 +22,45 @@ pub struct KeyboardMonitorState {
 
 impl KeyboardMonitorState {
     pub fn new() -> Self {
+        let is_monitoring = Arc::new(AtomicBool::new(false));
+        let was_modified = Arc::new(AtomicBool::new(false));
+
+        // 啟動持久的平台鍵盤監聽器（建立一次，永不銷毀）
+        // 靠 is_monitoring flag 控制是否處理事件
+        // 避免每次轉錄重新建立/銷毀 CGEventTap — 這是幽靈 Enter 的根因
+        #[cfg(target_os = "macos")]
+        {
+            let m = is_monitoring.clone();
+            let w = was_modified.clone();
+            std::thread::Builder::new()
+                .name("keyboard-monitor".to_string())
+                .spawn(move || run_persistent_event_tap(m, w))
+                .ok();
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let m = is_monitoring.clone();
+            let w = was_modified.clone();
+            std::thread::Builder::new()
+                .name("keyboard-monitor".to_string())
+                .spawn(move || run_persistent_hook(m, w))
+                .ok();
+        }
+
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        println!("[keyboard-monitor] Platform not supported, keyboard monitoring disabled");
+
         Self {
-            is_monitoring: Arc::new(AtomicBool::new(false)),
-            was_modified: Arc::new(AtomicBool::new(false)),
+            is_monitoring,
+            was_modified,
             cancel_token: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn shutdown(&self) {
+        if self.is_monitoring.load(Ordering::SeqCst) {
+            self.cancel_token.store(true, Ordering::SeqCst);
         }
     }
 }
@@ -56,7 +91,7 @@ fn emit_result<R: Runtime>(app_handle: &AppHandle<R>, was_modified: bool) {
     );
 }
 
-// ========== macOS Implementation ==========
+// ========== macOS: Persistent CGEventTap ==========
 
 #[cfg(target_os = "macos")]
 mod macos_keycodes {
@@ -65,99 +100,63 @@ mod macos_keycodes {
 }
 
 #[cfg(target_os = "macos")]
-fn start_monitoring_platform<R: Runtime>(
-    app_handle: AppHandle<R>,
-    state: Arc<AtomicBool>,
-    cancel_token: Arc<AtomicBool>,
-    is_monitoring: Arc<AtomicBool>,
-) {
+fn run_persistent_event_tap(is_monitoring: Arc<AtomicBool>, was_modified: Arc<AtomicBool>) {
     use core_foundation::runloop::{kCFRunLoopCommonModes, CFRunLoop};
     use core_graphics::event::{
         CGEventTap, CGEventTapLocation, CGEventTapOptions, CGEventTapPlacement, CGEventType,
     };
 
-    std::thread::spawn(move || {
-        let was_modified = state.clone();
-        let was_modified_for_tap = state;
-
-        let tap_result = CGEventTap::new(
-            CGEventTapLocation::Session,
-            CGEventTapPlacement::HeadInsertEventTap,
-            CGEventTapOptions::ListenOnly,
-            vec![CGEventType::KeyDown],
-            move |_proxy, _event_type, event| {
+    let tap_result = CGEventTap::new(
+        CGEventTapLocation::Session,
+        CGEventTapPlacement::HeadInsertEventTap,
+        CGEventTapOptions::ListenOnly,
+        vec![CGEventType::KeyDown],
+        move |_proxy, _event_type, event| {
+            if is_monitoring.load(Ordering::SeqCst) {
                 let keycode = event.get_integer_value_field(
                     core_graphics::event::EventField::KEYBOARD_EVENT_KEYCODE,
                 ) as u16;
 
                 if keycode == macos_keycodes::BACKSPACE || keycode == macos_keycodes::DELETE {
-                    was_modified_for_tap.store(true, Ordering::SeqCst);
+                    was_modified.store(true, Ordering::SeqCst);
                     #[cfg(debug_assertions)]
                     println!(
                         "[keyboard-monitor] Detected modify key: keycode={}",
                         keycode
                     );
                 }
-                None
-            },
-        );
-
-        match tap_result {
-            Ok(tap) => {
-                #[cfg(debug_assertions)]
-                println!("[keyboard-monitor] CGEventTap created, monitoring for 5 seconds...");
-                unsafe {
-                    let loop_source = tap
-                        .mach_port
-                        .create_runloop_source(0)
-                        .expect("Failed to create runloop source");
-                    let run_loop = CFRunLoop::get_current();
-                    run_loop.add_source(&loop_source, kCFRunLoopCommonModes);
-                    tap.enable();
-
-                    // 啟動計時器執行緒，到期後停止 RunLoop
-                    let run_loop_ref = CFRunLoop::get_current();
-                    let cancel_for_timer = cancel_token.clone();
-                    std::thread::spawn(move || {
-                        let cancelled = wait_with_cancellation(
-                            &cancel_for_timer,
-                            MONITOR_DURATION_MS,
-                            CANCEL_CHECK_INTERVAL_MS,
-                        );
-                        if cancelled {
-                            #[cfg(debug_assertions)]
-                            println!("[keyboard-monitor] Monitoring cancelled");
-                        }
-                        run_loop_ref.stop();
-                    });
-
-                    CFRunLoop::run_current();
-                }
-
-                let result = was_modified.load(Ordering::SeqCst);
-                is_monitoring.store(false, Ordering::SeqCst);
-                emit_result(&app_handle, result);
             }
-            Err(()) => {
-                eprintln!(
-                    "[keyboard-monitor] Failed to create CGEventTap (no Accessibility permission?)"
-                );
-                is_monitoring.store(false, Ordering::SeqCst);
-                emit_result(&app_handle, false);
+            None
+        },
+    );
+
+    match tap_result {
+        Ok(tap) => {
+            println!("[keyboard-monitor] Persistent CGEventTap created");
+            unsafe {
+                let loop_source = tap
+                    .mach_port
+                    .create_runloop_source(0)
+                    .expect("Failed to create runloop source");
+                let run_loop = CFRunLoop::get_current();
+                run_loop.add_source(&loop_source, kCFRunLoopCommonModes);
+                tap.enable();
+                CFRunLoop::run_current();
+                println!("[keyboard-monitor] Persistent CGEventTap stopped");
             }
         }
-    });
+        Err(()) => {
+            eprintln!(
+                "[keyboard-monitor] Failed to create CGEventTap (no Accessibility permission?)"
+            );
+        }
+    }
 }
 
-// ========== Windows Implementation ==========
+// ========== Windows: Persistent Keyboard Hook ==========
 
 #[cfg(target_os = "windows")]
-fn start_monitoring_platform<R: Runtime>(
-    app_handle: AppHandle<R>,
-    state: Arc<AtomicBool>,
-    cancel_token: Arc<AtomicBool>,
-    is_monitoring: Arc<AtomicBool>,
-) {
+fn run_persistent_hook(is_monitoring: Arc<AtomicBool>, was_modified: Arc<AtomicBool>) {
     use std::sync::OnceLock;
 
     const VK_BACK: u32 = 0x08;
@@ -165,32 +164,33 @@ fn start_monitoring_platform<R: Runtime>(
     const WM_KEYDOWN: u32 = 0x0100;
     const WM_SYSKEYDOWN: u32 = 0x0104;
 
-    // OnceLock 用於將 AtomicBool 傳遞給 static hook callback（Windows API 限制）。
-    // OnceLock::set 只會成功一次，但因為所有輪次共享同一個 Arc<AtomicBool>，
-    // 透過 start_quality_monitor 中的 was_modified.store(false, ...) 重置即可正確運作。
-    static MONITOR_STATE: OnceLock<Arc<AtomicBool>> = OnceLock::new();
+    struct HookState {
+        is_monitoring: Arc<AtomicBool>,
+        was_modified: Arc<AtomicBool>,
+    }
 
-    let _ = MONITOR_STATE.set(state.clone());
+    static HOOK_STATE: OnceLock<HookState> = OnceLock::new();
+    let _ = HOOK_STATE.set(HookState {
+        is_monitoring,
+        was_modified,
+    });
 
-    std::thread::spawn(move || {
-        use windows::Win32::Foundation::*;
+    unsafe extern "system" fn hook_proc(
+        n_code: i32,
+        w_param: windows::Win32::Foundation::WPARAM,
+        l_param: windows::Win32::Foundation::LPARAM,
+    ) -> windows::Win32::Foundation::LRESULT {
         use windows::Win32::UI::WindowsAndMessaging::*;
 
-        unsafe extern "system" fn hook_proc(
-            n_code: i32,
-            w_param: WPARAM,
-            l_param: LPARAM,
-        ) -> LRESULT {
-            use windows::Win32::UI::WindowsAndMessaging::*;
+        if n_code >= 0 {
+            if let Some(state) = HOOK_STATE.get() {
+                if state.is_monitoring.load(Ordering::SeqCst) {
+                    let kbd = *(l_param.0 as *const KBDLLHOOKSTRUCT);
+                    let w = w_param.0 as u32;
 
-            if n_code >= 0 {
-                let kbd = *(l_param.0 as *const KBDLLHOOKSTRUCT);
-                let w = w_param.0 as u32;
-
-                if w == WM_KEYDOWN || w == WM_SYSKEYDOWN {
-                    if kbd.vkCode == VK_BACK || kbd.vkCode == VK_DELETE {
-                        if let Some(state) = MONITOR_STATE.get() {
-                            state.store(true, Ordering::SeqCst);
+                    if w == WM_KEYDOWN || w == WM_SYSKEYDOWN {
+                        if kbd.vkCode == VK_BACK || kbd.vkCode == VK_DELETE {
+                            state.was_modified.store(true, Ordering::SeqCst);
                             #[cfg(debug_assertions)]
                             println!(
                                 "[keyboard-monitor] Detected modify key: vkCode=0x{:02X}",
@@ -200,73 +200,31 @@ fn start_monitoring_platform<R: Runtime>(
                     }
                 }
             }
-
-            CallNextHookEx(None, n_code, w_param, l_param)
         }
 
-        unsafe {
-            match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), None, 0) {
-                Ok(hook) => {
-                    #[cfg(debug_assertions)]
-                    println!(
-                        "[keyboard-monitor] Windows hook installed, monitoring for 5 seconds..."
-                    );
+        CallNextHookEx(None, n_code, w_param, l_param)
+    }
 
-                    // 取得當前執行緒 ID，用於計時器執行緒結束 message loop
-                    let thread_id = windows::Win32::System::Threading::GetCurrentThreadId();
+    unsafe {
+        use windows::Win32::Foundation::*;
+        use windows::Win32::UI::WindowsAndMessaging::*;
 
-                    let cancel_for_timer = cancel_token.clone();
-                    std::thread::spawn(move || {
-                        let cancelled = wait_with_cancellation(
-                            &cancel_for_timer,
-                            MONITOR_DURATION_MS,
-                            CANCEL_CHECK_INTERVAL_MS,
-                        );
-                        if cancelled {
-                            #[cfg(debug_assertions)]
-                            println!("[keyboard-monitor] Monitoring cancelled");
-                        }
-                        unsafe {
-                            let _ = PostThreadMessageW(thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
-                        }
-                    });
-
-                    // Message loop
-                    let mut msg = MSG::default();
-                    while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-                        let _ = TranslateMessage(&msg);
-                        DispatchMessageW(&msg);
-                    }
-
-                    let _ = UnhookWindowsHookEx(hook);
-
-                    let result = state.load(Ordering::SeqCst);
-                    is_monitoring.store(false, Ordering::SeqCst);
-                    emit_result(&app_handle, result);
+        match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), None, 0) {
+            Ok(hook) => {
+                println!("[keyboard-monitor] Persistent Windows hook installed");
+                let mut msg = MSG::default();
+                while GetMessageW(&mut msg, None, 0, 0).as_bool() {
+                    let _ = TranslateMessage(&msg);
+                    DispatchMessageW(&msg);
                 }
-                Err(e) => {
-                    eprintln!("[keyboard-monitor] Failed to install hook: {}", e);
-                    is_monitoring.store(false, Ordering::SeqCst);
-                    emit_result(&app_handle, false);
-                }
+                let _ = UnhookWindowsHookEx(hook);
+                println!("[keyboard-monitor] Persistent Windows hook removed");
+            }
+            Err(e) => {
+                eprintln!("[keyboard-monitor] Failed to install persistent hook: {}", e);
             }
         }
-    });
-}
-
-// ========== Unsupported platforms ==========
-
-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
-fn start_monitoring_platform<R: Runtime>(
-    app_handle: AppHandle<R>,
-    _state: Arc<AtomicBool>,
-    _cancel_token: Arc<AtomicBool>,
-    is_monitoring: Arc<AtomicBool>,
-) {
-    #[cfg(debug_assertions)]
-    println!("[keyboard-monitor] Platform not supported, skipping monitor");
-    is_monitoring.store(false, Ordering::SeqCst);
-    emit_result(&app_handle, false);
+    }
 }
 
 // ========== Tauri Command ==========
@@ -291,12 +249,25 @@ pub fn start_quality_monitor<R: Runtime>(app: AppHandle<R>) {
     #[cfg(debug_assertions)]
     println!("[keyboard-monitor] Starting quality monitor");
 
-    start_monitoring_platform(
-        app.clone(),
-        state.was_modified.clone(),
-        state.cancel_token.clone(),
-        state.is_monitoring.clone(),
-    );
+    // 計時器：5 秒後結束監控並回傳結果
+    // 持久 CGEventTap/Hook 已在背景運行，這裡只控制 flag 和計時
+    let is_monitoring = state.is_monitoring.clone();
+    let was_modified = state.was_modified.clone();
+    let cancel_token = state.cancel_token.clone();
+
+    std::thread::spawn(move || {
+        let cancelled = wait_with_cancellation(
+            &cancel_token,
+            MONITOR_DURATION_MS,
+            CANCEL_CHECK_INTERVAL_MS,
+        );
+        if cancelled {
+            #[cfg(debug_assertions)]
+            println!("[keyboard-monitor] Monitoring cancelled");
+        }
+        is_monitoring.store(false, Ordering::SeqCst);
+        emit_result(&app, was_modified.load(Ordering::SeqCst));
+    });
 }
 
 // ========== Tests ==========

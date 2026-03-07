@@ -81,6 +81,14 @@ impl HotkeyListenerState {
         *self.trigger_mode.lock().unwrap() = mode;
         self.reset_key_states();
     }
+
+    #[cfg(target_os = "macos")]
+    pub fn shutdown(&self) {
+        stop_existing_event_tap(&self.run_loop_ref);
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    pub fn shutdown(&self) {}
 }
 
 // ========== Event Handling ==========

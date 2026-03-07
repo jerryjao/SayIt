@@ -480,10 +480,41 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|_app_handle, _event| {
-            #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = _event {
-                show_main_window(_app_handle);
+        .run(|app_handle, event| {
+            match event {
+                #[cfg(target_os = "macos")]
+                tauri::RunEvent::Reopen { .. } => {
+                    show_main_window(app_handle);
+                }
+                tauri::RunEvent::Exit => {
+                    println!("[app] Exit: starting graceful shutdown...");
+
+                    // 1. 恢復系統音量（避免永久靜音）
+                    if let Some(state) = app_handle.try_state::<plugins::audio_control::AudioControlState>() {
+                        state.shutdown();
+                    }
+                    // 2. 停止 cpal 錄音（join thread, drop AudioUnit）
+                    if let Some(state) = app_handle.try_state::<plugins::audio_recorder::AudioRecorderState>() {
+                        state.shutdown();
+                    }
+                    // 3. 取消 keyboard monitor CGEventTap
+                    if let Some(state) = app_handle.try_state::<plugins::keyboard_monitor::KeyboardMonitorState>() {
+                        state.shutdown();
+                    }
+                    // 4. 停止 hotkey listener CGEventTap
+                    if let Some(state) = app_handle.try_state::<plugins::hotkey_listener::HotkeyListenerState>() {
+                        state.shutdown();
+                    }
+                    // 5. 等待背景 thread 完成清理
+                    std::thread::sleep(std::time::Duration::from_millis(200));
+
+                    println!("[app] Graceful shutdown complete");
+                    extern "C" {
+                        fn _exit(status: i32) -> !;
+                    }
+                    unsafe { _exit(0) }
+                }
+                _ => {}
             }
         });
 }

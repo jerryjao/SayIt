@@ -77,6 +77,19 @@ impl AudioRecorderState {
             wav_buffer: Mutex::new(None),
         }
     }
+
+    pub fn shutdown(&self) {
+        let mut guard = match self.recording.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        if let Some(mut handle) = guard.take() {
+            handle.inner.should_stop.store(true, Ordering::SeqCst);
+            if let Some(thread) = handle.thread.take() {
+                let _ = thread.join();
+            }
+        }
+    }
 }
 
 // ========== FFT Constants ==========

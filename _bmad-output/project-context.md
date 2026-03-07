@@ -4,7 +4,7 @@ user_name: 'Jackle'
 date: '2026-03-08'
 sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry']
 status: 'complete'
-rule_count: 120
+rule_count: 126
 optimized_for_llm: true
 ---
 
@@ -137,6 +137,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **unsafe 標記** — macOS `objc::msg_send!` 呼叫必須在 `unsafe {}` 區塊內
 - **原子操作** — 跨執行緒共享狀態使用 `AtomicBool` + `Ordering::SeqCst`
 - **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`, `audio_control`, `audio_recorder`, `transcription`）
+- **Plugin State shutdown 慣例** — 每個 Plugin State struct 必須實作 `pub fn shutdown(&self)` 方法，用於 App 退出時清理資源（停止錄音、恢復音量、取消 CGEventTap 等）。`shutdown()` 內部必須處理 `Mutex` poisoned 的情況（`match lock() { Err(_) => return }`）
 - **Serde JSON 序列化** — Rust → 前端的 payload struct 使用 `#[serde(rename_all = "camelCase")]` 確保前端收到 camelCase JSON
 - **Crate 命名** — `name = "sayit_lib"`，`crate-type = ["staticlib", "cdylib", "rlib"]`
 - **Release profile** — `panic = "abort"`, `lto = true`, `opt-level = "s"`（檔案大小最佳化）
@@ -176,6 +177,25 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **HTTP 請求** — 使用 `@tauri-apps/plugin-http` 的 `fetch`（非瀏覽器原生 fetch），繞過 CORS
 - **視窗操作** — `getCurrentWindow()` 取得當前視窗實例
 - **多入口架構** — HUD（`index.html` → `main.ts` → `App.vue`）和 Dashboard（`main-window.html` → `main-window.ts` → `MainApp.vue`）為獨立入口
+
+#### Graceful Shutdown（App 退出清理）
+
+- **觸發點** — `lib.rs` 的 `RunEvent::Exit` handler
+- **執行順序**（必須嚴格遵守，避免資源洩漏）：
+  1. `audio_control.shutdown()` — 恢復系統音量（最高優先：避免永久靜音）
+  2. `audio_recorder.shutdown()` — 停止 cpal 錄音 stream + join thread
+  3. `keyboard_monitor.shutdown()` — 取消 CGEventTap / unhook Windows Hook
+  4. `hotkey_listener.shutdown()` — 停止 hotkey CGEventTap
+  5. `sleep(200ms)` — 等待背景 thread 完成清理
+  6. `_exit(0)` — 強制退出（繞過 Tauri 預設行為）
+- **新 Plugin 加入時** — 必須在對應位置加入 `shutdown()` 呼叫，並考慮順序依賴
+- **`try_state::<T>()`** — 使用 `try_state` 而非 `state`，因為 Exit 事件不保證所有 state 都已註冊
+
+#### Persistent Event Tap 模式（keyboard_monitor）
+
+- **持久監聽器** — `keyboard_monitor.rs` 在 `KeyboardMonitorState::new()` 時建立一次 CGEventTap（macOS）/ Windows Hook，App 生命週期內永不銷毀
+- **Flag 控制** — 靠 `is_monitoring: AtomicBool` 控制是否處理事件，`start_quality_monitor` command 只翻 flag + 啟動計時器 thread
+- **設計動機** — 重複建立/銷毀 CGEventTap 會產生幽靈按鍵（ghost Enter key），這是已確認的 bug 根因
 
 #### Tauri Events 完整清單
 
@@ -468,6 +488,8 @@ src/
 - **❌ Singleton 提前賦值** — `database.ts` 的 `db` 變數絕不在 `Database.load()` 後立即賦值，必須等所有 `CREATE TABLE` 成功後才設定。否則 `getDatabase()` 返回無表空連線，所有 query 靜默失敗
 - **❌ 假設 `sql:default` 包含寫入權限** — Tauri v2 的 `sql:default` 只有 `load/select/close`，任何 DDL/DML 操作需要額外的 `sql:allow-execute`。新增 Tauri plugin 時務必用 `acl-manifests.json` 確認 default 權限組的實際內容
 - **❌ mount 前未初始化 DB** — `main-window.ts` 中 `app.mount()` 會觸發所有元件的 `onMounted`，若 DB 尚未初始化，Store 的 `getDatabase()` 會拋錯且被 try-catch 靜默吞掉
+- **❌ 每次轉錄重建/銷毀 CGEventTap** — `keyboard_monitor` 必須使用持久 CGEventTap/Hook 模式：App 啟動時建立一次，靠 `is_monitoring: AtomicBool` flag 控制是否處理事件。重複建立/銷毀 CGEventTap 會產生幽靈按鍵（ghost Enter key），這是已確認的 bug 根因
+- **❌ `RunEvent::Exit` 中用 `state()` 取 managed state** — 必須用 `try_state::<T>()` + `if let Some(state)` 模式，避免 state 未註冊時 panic
 
 #### 資料映射陷阱
 
@@ -530,4 +552,4 @@ src/
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-03-08 (v2 — Sentry 整合、Rust 音訊管線遷移)
+Last Updated: 2026-03-08 (v3 — Graceful Shutdown、Persistent Event Tap 模式)

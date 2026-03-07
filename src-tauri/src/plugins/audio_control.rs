@@ -17,6 +17,17 @@ impl AudioControlState {
             was_muted_before: Mutex::new(None),
         }
     }
+
+    pub fn shutdown(&self) {
+        let mut guard = match self.was_muted_before.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+        if let Some(was_muted) = guard.take() {
+            let _ = platform_set_system_mute(was_muted);
+            println!("[audio-control] shutdown: restored system audio");
+        }
+    }
 }
 
 // ========== macOS CoreAudio Implementation ==========
