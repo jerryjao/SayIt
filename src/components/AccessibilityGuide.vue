@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { invoke } from "@tauri-apps/api/core";
 import { nextTick, onBeforeUnmount, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 
 const PERMISSION_CHECK_INTERVAL_MS = 2000;
@@ -17,6 +18,7 @@ const dialogRef = ref<HTMLDivElement | null>(null);
 const primaryButtonRef = ref<InstanceType<typeof Button> | null>(null);
 const isReinitializing = ref(false);
 const reinitializeError = ref<string | null>(null);
+const { t } = useI18n();
 
 let pollingTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -53,7 +55,7 @@ async function handlePermissionGranted() {
     emit("close");
   } catch (error) {
     console.error("[accessibility-guide] Reinitialize failed:", error);
-    reinitializeError.value = "快捷鍵重新初始化失敗，請重新啟動應用程式。";
+    reinitializeError.value = t("accessibility.reinitializeError");
   } finally {
     isReinitializing.value = false;
   }
@@ -127,19 +129,19 @@ async function handleOpenAccessibilitySettings() {
         id="accessibility-guide-title"
         class="text-xl font-semibold text-card-foreground"
       >
-        需要輔助使用權限
+        {{ $t("accessibility.title") }}
       </h2>
       <p class="mt-3 text-sm leading-relaxed text-muted-foreground">
-        SayIt 需要「輔助使用」權限來監聽全域快捷鍵。若未授權，快捷鍵功能將無法使用。
+        {{ $t("accessibility.description") }}
       </p>
       <ol class="mt-4 list-decimal space-y-2 pl-5 text-sm text-muted-foreground">
-        <li>點擊下方按鈕開啟系統設定。</li>
-        <li>在清單中找到 SayIt 並勾選。</li>
-        <li>回到 App，系統將自動偵測並啟用。</li>
+        <li>{{ $t("accessibility.step1") }}</li>
+        <li>{{ $t("accessibility.step2") }}</li>
+        <li>{{ $t("accessibility.step3") }}</li>
       </ol>
 
       <p v-if="isReinitializing" class="mt-3 text-sm text-primary">
-        偵測到權限已授予，正在啟用快捷鍵...
+        {{ $t("accessibility.reinitializing") }}
       </p>
       <p v-if="reinitializeError" class="mt-3 text-sm text-destructive">
         {{ reinitializeError }}
@@ -151,14 +153,14 @@ async function handleOpenAccessibilitySettings() {
           :disabled="isReinitializing"
           @click="handleOpenAccessibilitySettings"
         >
-          開啟系統設定
+          {{ $t("accessibility.openSettings") }}
         </Button>
         <Button
           variant="outline"
           :disabled="isReinitializing"
           @click="emit('close')"
         >
-          稍後設定
+          {{ $t("accessibility.later") }}
         </Button>
       </div>
     </div>

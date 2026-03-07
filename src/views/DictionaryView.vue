@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useVocabularyStore } from "../stores/useVocabularyStore";
 import { extractErrorMessage } from "../lib/errorUtils";
 import { useFeedbackMessage } from "../composables/useFeedbackMessage";
+import { useI18n } from "vue-i18n";
 import { Plus, Trash2 } from "lucide-vue-next";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui/table";
 
 const vocabularyStore = useVocabularyStore();
+const { t, locale } = useI18n();
 
 const newTermInput = ref("");
 const isAdding = ref(false);
@@ -42,7 +44,7 @@ async function handleAddTerm() {
     isAdding.value = true;
     await vocabularyStore.addTerm(term);
     newTermInput.value = "";
-    feedback.show("success", `已新增「${term}」`);
+    feedback.show("success", t("dictionary.added", { term }));
   } catch (err) {
     feedback.show("error", extractErrorMessage(err));
   } finally {
@@ -56,7 +58,7 @@ async function handleRemoveTerm(id: string, term: string) {
   try {
     removingTermIdSet.value.add(id);
     await vocabularyStore.removeTerm(id);
-    feedback.show("success", `已刪除「${term}」`);
+    feedback.show("success", t("dictionary.removed", { term }));
   } catch (err) {
     feedback.show("error", extractErrorMessage(err));
   } finally {
@@ -68,7 +70,7 @@ function formatDate(dateString: string): string {
   try {
     // SQLite created_at 儲存為 UTC 且不帶時區後綴，附加 "Z" 確保以 UTC 解析
     const date = new Date(dateString + "Z");
-    return date.toLocaleDateString("zh-TW", {
+    return date.toLocaleDateString(locale.value, {
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
@@ -82,7 +84,7 @@ onMounted(async () => {
   try {
     await vocabularyStore.fetchTermList();
   } catch {
-    feedback.show("error", "載入詞彙清單失敗");
+    feedback.show("error", t("dictionary.loadFailed"));
   }
 });
 
@@ -95,18 +97,18 @@ onBeforeUnmount(() => {
   <div class="p-6">
     <!-- Page header -->
     <div class="flex flex-wrap items-center justify-between gap-4">
-      <Badge variant="secondary">{{ vocabularyStore.termCount }} 詞彙</Badge>
+      <Badge variant="secondary">{{ $t("dictionary.termCount", { count: vocabularyStore.termCount }) }}</Badge>
 
       <div class="flex items-center gap-2">
         <div class="flex flex-col">
           <Input
             v-model="newTermInput"
-            placeholder="輸入新詞彙..."
+            :placeholder="$t('dictionary.inputPlaceholder')"
             class="w-48"
             @keydown.enter="handleAddTerm"
           />
           <p v-if="showDuplicateHint" class="mt-1 text-xs text-destructive">
-            此詞彙已存在
+            {{ $t("dictionary.duplicateEntry") }}
           </p>
         </div>
         <Button
@@ -114,7 +116,7 @@ onBeforeUnmount(() => {
           :disabled="isAddDisabled || showDuplicateHint"
           @click="handleAddTerm"
         >
-          <Plus class="h-4 w-4 mr-1" />新增
+          <Plus class="h-4 w-4 mr-1" />{{ $t("dictionary.add") }}
         </Button>
       </div>
     </div>
@@ -132,13 +134,13 @@ onBeforeUnmount(() => {
 
     <!-- Loading state -->
     <div v-if="vocabularyStore.isLoading" class="mt-6 text-center text-muted-foreground">
-      載入中...
+      {{ $t("dictionary.loading") }}
     </div>
 
     <!-- Empty state -->
     <Card v-else-if="vocabularyStore.termCount === 0" class="mt-6">
       <div class="px-4 py-8 text-center text-muted-foreground">
-        尚無自訂詞彙，新增常用術語以提升辨識率
+        {{ $t("dictionary.emptyState") }}
       </div>
     </Card>
 
@@ -147,9 +149,9 @@ onBeforeUnmount(() => {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead class="w-full">詞彙</TableHead>
-            <TableHead class="w-40">新增時間</TableHead>
-            <TableHead class="w-20 text-right">操作</TableHead>
+            <TableHead class="w-full">{{ $t("dictionary.termHeader") }}</TableHead>
+            <TableHead class="w-40">{{ $t("dictionary.dateHeader") }}</TableHead>
+            <TableHead class="w-20 text-right">{{ $t("dictionary.actionHeader") }}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>

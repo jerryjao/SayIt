@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   useSettingsStore,
   DEFAULT_ENHANCEMENT_THRESHOLD_ENABLED,
@@ -20,6 +21,7 @@ import {
   type LlmModelId,
   type WhisperModelId,
 } from "../lib/modelRegistry";
+import { LANGUAGE_OPTIONS, type SupportedLocale } from "../i18n/languageConfig";
 
 import {
   Card,
@@ -51,30 +53,29 @@ import {
 } from "lucide-vue-next";
 
 const settingsStore = useSettingsStore();
+const { t } = useI18n();
 
 // ── 快捷鍵設定 ──────────────────────────────────────────────
 const isMac = navigator.userAgent.includes("Mac");
 
-const MAC_TRIGGER_KEY_OPTIONS: { value: PresetTriggerKey; label: string }[] = [
-  { value: "fn", label: "Fn" },
-  { value: "option", label: "左 Option (⌥)" },
-  { value: "rightOption", label: "右 Option (⌥)" },
-  { value: "control", label: "左 Control (⌃)" },
-  { value: "rightControl", label: "右 Control (⌃)" },
-  { value: "command", label: "Command (⌘)" },
-  { value: "shift", label: "Shift (⇧)" },
-];
-
-const WINDOWS_TRIGGER_KEY_OPTIONS: { value: PresetTriggerKey; label: string }[] = [
-  { value: "rightAlt", label: "右 Alt" },
-  { value: "leftAlt", label: "左 Alt" },
-  { value: "control", label: "Control" },
-  { value: "shift", label: "Shift" },
-];
-
-const triggerKeyOptions = isMac
-  ? MAC_TRIGGER_KEY_OPTIONS
-  : WINDOWS_TRIGGER_KEY_OPTIONS;
+const triggerKeyOptions = computed<{ value: PresetTriggerKey; label: string }[]>(() =>
+  isMac
+    ? [
+        { value: "fn", label: t("settings.hotkey.keys.fn") },
+        { value: "option", label: t("settings.hotkey.keys.leftOption") },
+        { value: "rightOption", label: t("settings.hotkey.keys.rightOption") },
+        { value: "control", label: t("settings.hotkey.keys.leftControl") },
+        { value: "rightControl", label: t("settings.hotkey.keys.rightControl") },
+        { value: "command", label: t("settings.hotkey.keys.command") },
+        { value: "shift", label: t("settings.hotkey.keys.shift") },
+      ]
+    : [
+        { value: "rightAlt", label: t("settings.hotkey.keys.rightAlt") },
+        { value: "leftAlt", label: t("settings.hotkey.keys.leftAlt") },
+        { value: "control", label: t("settings.hotkey.keys.control") },
+        { value: "shift", label: t("settings.hotkey.keys.shift") },
+      ]
+);
 
 const hotkeyFeedback = useFeedbackMessage();
 
@@ -142,7 +143,7 @@ async function handleKeydownForRecording(event: KeyboardEvent) {
   stopKeyRecording();
   try {
     await settingsStore.saveCustomTriggerKey(keycode, domCode, currentMode);
-    hotkeyFeedback.show("success", `觸發鍵已設為 ${settingsStore.getKeyDisplayName(domCode)}`);
+    hotkeyFeedback.show("success", t("settings.hotkey.keySet", { key: settingsStore.getKeyDisplayName(domCode) }));
   } catch (err) {
     hotkeyFeedback.show("error", extractErrorMessage(err));
   }
@@ -204,7 +205,7 @@ async function handleTriggerKeyChange(newKey: PresetTriggerKey) {
   const currentMode = settingsStore.triggerMode;
   try {
     await settingsStore.saveHotkeyConfig(newKey, currentMode);
-    hotkeyFeedback.show("success", "觸發鍵已更新");
+    hotkeyFeedback.show("success", t("settings.hotkey.updated"));
   } catch (err) {
     hotkeyFeedback.show("error", extractErrorMessage(err));
   }
@@ -215,7 +216,7 @@ async function handleTriggerModeChange(newMode: TriggerMode) {
     settingsStore.hotkeyConfig?.triggerKey ?? (isMac ? "fn" : "rightAlt");
   try {
     await settingsStore.saveHotkeyConfig(currentKey, newMode);
-    hotkeyFeedback.show("success", "觸發模式已更新");
+    hotkeyFeedback.show("success", t("settings.hotkey.modeUpdated"));
   } catch (err) {
     hotkeyFeedback.show("error", extractErrorMessage(err));
   }
@@ -238,7 +239,7 @@ const isConfirmingResetPrompt = ref(false);
 let resetPromptConfirmTimeoutId: ReturnType<typeof setTimeout> | undefined;
 
 const apiKeyStatusLabel = computed(() =>
-  settingsStore.hasApiKey ? "已設定" : "未設定",
+  settingsStore.hasApiKey ? t("settings.apiKey.set") : t("settings.apiKey.notSet"),
 );
 const apiKeyStatusClass = computed(() =>
   settingsStore.hasApiKey
@@ -256,7 +257,7 @@ async function handleSaveApiKey() {
     isSubmittingApiKey.value = true;
     await settingsStore.saveApiKey(apiKeyInput.value);
     isApiKeyVisible.value = false;
-    apiKeyFeedback.show("success", "API Key 已儲存");
+    apiKeyFeedback.show("success", t("settings.apiKey.saved"));
   } catch (err) {
     apiKeyFeedback.show("error", extractErrorMessage(err));
   } finally {
@@ -283,7 +284,7 @@ async function handleDeleteApiKey() {
     await settingsStore.deleteApiKey();
     apiKeyInput.value = "";
     isApiKeyVisible.value = false;
-    apiKeyFeedback.show("success", "API Key 已刪除");
+    apiKeyFeedback.show("success", t("settings.apiKey.deleted"));
   } catch (err) {
     apiKeyFeedback.show("error", extractErrorMessage(err));
   } finally {
@@ -295,7 +296,7 @@ async function handleSavePrompt() {
   try {
     isSubmittingPrompt.value = true;
     await settingsStore.saveAiPrompt(promptInput.value);
-    promptFeedback.show("success", "Prompt 已儲存");
+    promptFeedback.show("success", t("settings.prompt.saved"));
   } catch (err) {
     promptFeedback.show("error", extractErrorMessage(err));
   } finally {
@@ -321,7 +322,7 @@ async function handleResetPrompt() {
     isSubmittingPrompt.value = true;
     await settingsStore.resetAiPrompt();
     promptInput.value = settingsStore.getAiPrompt();
-    promptFeedback.show("success", "已重置為預設");
+    promptFeedback.show("success", t("settings.prompt.resetDone"));
   } catch (err) {
     promptFeedback.show("error", extractErrorMessage(err));
   } finally {
@@ -343,7 +344,7 @@ async function handleToggleEnhancementThreshold() {
     );
     enhancementThresholdFeedback.show(
       "success",
-      thresholdEnabled.value ? "已啟用短文字門檻" : "已停用短文字門檻",
+      thresholdEnabled.value ? t("settings.threshold.enabledFeedback") : t("settings.threshold.disabledFeedback"),
     );
   } catch (err) {
     thresholdEnabled.value = !thresholdEnabled.value;
@@ -358,7 +359,7 @@ async function handleSaveThresholdCharCount() {
       thresholdCharCount.value,
     );
     thresholdCharCount.value = settingsStore.enhancementThresholdCharCount;
-    enhancementThresholdFeedback.show("success", "門檻字數已儲存");
+    enhancementThresholdFeedback.show("success", t("settings.threshold.charCountSaved"));
   } catch (err) {
     enhancementThresholdFeedback.show("error", extractErrorMessage(err));
   }
@@ -370,7 +371,7 @@ const modelFeedback = useFeedbackMessage();
 const whisperModelDescription = computed(() => {
   const config = findWhisperModelConfig(settingsStore.selectedWhisperModelId);
   if (!config) return "";
-  return `每小時 $${config.costPerHour}`;
+  return t("settings.model.costPerHour", { cost: config.costPerHour });
 });
 
 const llmModelDescription = computed(() => {
@@ -382,7 +383,7 @@ const llmModelDescription = computed(() => {
 async function handleWhisperModelChange(newId: WhisperModelId) {
   try {
     await settingsStore.saveWhisperModel(newId);
-    modelFeedback.show("success", "語音轉錄模型已更新");
+    modelFeedback.show("success", t("settings.model.whisperUpdated"));
   } catch (err) {
     modelFeedback.show("error", extractErrorMessage(err));
   }
@@ -391,7 +392,7 @@ async function handleWhisperModelChange(newId: WhisperModelId) {
 async function handleLlmModelChange(newId: LlmModelId) {
   try {
     await settingsStore.saveLlmModel(newId);
-    modelFeedback.show("success", "文字整理模型已更新");
+    modelFeedback.show("success", t("settings.model.llmUpdated"));
   } catch (err) {
     modelFeedback.show("error", extractErrorMessage(err));
   }
@@ -405,10 +406,22 @@ async function handleToggleMuteOnRecording(newValue: boolean) {
     await settingsStore.saveMuteOnRecording(newValue);
     muteOnRecordingFeedback.show(
       "success",
-      newValue ? "已啟用錄音自動靜音" : "已停用錄音自動靜音",
+      newValue ? t("settings.app.muteEnabled") : t("settings.app.muteDisabled"),
     );
   } catch (err) {
     muteOnRecordingFeedback.show("error", extractErrorMessage(err));
+  }
+}
+
+// ── 介面語言 ──────────────────────────────────────────────
+const localeFeedback = useFeedbackMessage();
+
+async function handleLocaleChange(newLocale: SupportedLocale) {
+  try {
+    await settingsStore.saveLocale(newLocale);
+    localeFeedback.show("success", t("settings.app.languageUpdated"));
+  } catch (err) {
+    localeFeedback.show("error", extractErrorMessage(err));
   }
 }
 
@@ -422,7 +435,7 @@ async function handleToggleAutoStart() {
     await settingsStore.toggleAutoStart();
     autoStartFeedback.show(
       "success",
-      settingsStore.isAutoStartEnabled ? "已啟用開機自啟動" : "已關閉開機自啟動",
+      settingsStore.isAutoStartEnabled ? t("settings.app.autoStartEnabled") : t("settings.app.autoStartDisabled"),
     );
   } catch (err) {
     autoStartFeedback.show("error", extractErrorMessage(err));
@@ -455,6 +468,7 @@ onBeforeUnmount(() => {
   enhancementThresholdFeedback.clearTimer();
   modelFeedback.clearTimer();
   muteOnRecordingFeedback.clearTimer();
+  localeFeedback.clearTimer();
   autoStartFeedback.clearTimer();
   clearTimeout(deleteConfirmTimeoutId);
   clearTimeout(resetPromptConfirmTimeoutId);
@@ -466,22 +480,22 @@ onBeforeUnmount(() => {
     <!-- 關於 SayIt -->
     <Card>
       <CardHeader class="border-b border-border">
-        <CardTitle class="text-base">關於 SayIt</CardTitle>
+        <CardTitle class="text-base">{{ $t("settings.about.title") }}</CardTitle>
       </CardHeader>
       <CardContent class="space-y-4">
         <div class="space-y-1">
           <p class="text-sm text-muted-foreground">
-            按住說話，放開貼上。SayIt 是開源的桌面語音轉文字工具，採用 MIT 授權。
+            {{ $t("settings.about.description") }}
           </p>
           <p class="text-sm text-muted-foreground">
-            作者：<a href="https://jackle.pro" target="_blank" rel="noopener noreferrer" class="font-medium text-foreground hover:text-primary transition-colors">Jackle Chen</a>
+            {{ $t("settings.about.author") }}<a href="https://jackle.pro" target="_blank" rel="noopener noreferrer" class="font-medium text-foreground hover:text-primary transition-colors">Jackle Chen</a>
           </p>
         </div>
 
         <div class="flex flex-wrap gap-x-4 gap-y-2">
           <a href="https://jackle.pro" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
             <Globe class="size-4" />
-            <span>個人網站</span>
+            <span>{{ $t("settings.about.website") }}</span>
           </a>
           <a href="https://www.facebook.com/jackle45" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
             <Facebook class="size-4" />
@@ -502,11 +516,11 @@ onBeforeUnmount(() => {
         <div class="flex flex-wrap gap-x-4 gap-y-2">
           <a href="https://github.com/chenjackle45/SayIt" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
             <Github class="size-4" />
-            <span>查看原始碼</span>
+            <span>{{ $t("settings.about.sourceCode") }}</span>
           </a>
           <a href="https://github.com/chenjackle45/SayIt/issues" target="_blank" rel="noopener noreferrer" class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary transition-colors">
             <CircleAlert class="size-4" />
-            <span>回報問題</span>
+            <span>{{ $t("settings.about.reportIssue") }}</span>
           </a>
         </div>
       </CardContent>
@@ -515,12 +529,12 @@ onBeforeUnmount(() => {
     <!-- 快捷鍵設定 -->
     <Card>
       <CardHeader class="border-b border-border">
-        <CardTitle class="text-base">快捷鍵設定</CardTitle>
+        <CardTitle class="text-base">{{ $t("settings.hotkey.title") }}</CardTitle>
       </CardHeader>
       <CardContent class="space-y-4">
         <!-- 簡易 / 自訂 模式切換 -->
         <div class="flex items-center justify-between">
-          <Label>觸發鍵模式</Label>
+          <Label>{{ $t("settings.hotkey.triggerKeyMode") }}</Label>
           <div class="flex rounded-lg border border-border overflow-hidden">
             <button
               type="button"
@@ -532,7 +546,7 @@ onBeforeUnmount(() => {
               "
               @click="switchToPreset"
             >
-              簡易
+              {{ $t("settings.hotkey.preset") }}
             </button>
             <button
               type="button"
@@ -544,14 +558,14 @@ onBeforeUnmount(() => {
               "
               @click="switchToCustom"
             >
-              自訂
+              {{ $t("settings.hotkey.custom") }}
             </button>
           </div>
         </div>
 
         <!-- 簡易模式：Select 下拉 -->
         <div v-if="!isCustomMode" class="flex items-center justify-between">
-          <Label for="trigger-key">觸發鍵</Label>
+          <Label for="trigger-key">{{ $t("settings.hotkey.triggerKey") }}</Label>
           <Select
             :model-value="currentPresetKey"
             @update:model-value="handleTriggerKeyChange($event as PresetTriggerKey)"
@@ -574,24 +588,24 @@ onBeforeUnmount(() => {
         <!-- 自訂模式：錄製按鍵 -->
         <div v-else class="space-y-3">
           <div class="flex items-center justify-between">
-            <Label>自訂觸發鍵</Label>
+            <Label>{{ $t("settings.hotkey.customTriggerKey") }}</Label>
             <div class="flex items-center gap-3">
               <span v-if="hasCustomKey" class="text-sm font-medium text-foreground">
                 {{ currentCustomKeyDisplay }}
               </span>
-              <span v-else class="text-sm text-muted-foreground">未設定</span>
+              <span v-else class="text-sm text-muted-foreground">{{ $t("settings.hotkey.notSet") }}</span>
               <Button
                 :variant="isRecording ? 'destructive' : 'outline'"
                 size="sm"
                 :class="{ 'animate-pulse': isRecording }"
                 @click="isRecording ? stopKeyRecording() : startRecording()"
               >
-                {{ isRecording ? '請按下按鍵...' : '錄製' }}
+                {{ isRecording ? $t('settings.hotkey.pressKey') : $t('settings.hotkey.record') }}
               </Button>
             </div>
           </div>
           <p class="text-xs text-muted-foreground">
-            Fn、媒體鍵等系統鍵請使用簡易模式
+            {{ $t("settings.hotkey.systemKeyHint") }}
           </p>
 
           <!-- 警告訊息（黃色） -->
@@ -607,7 +621,7 @@ onBeforeUnmount(() => {
 
         <!-- 觸發模式 -->
         <div class="flex items-center justify-between">
-          <Label for="trigger-mode">觸發模式</Label>
+          <Label for="trigger-mode">{{ $t("settings.hotkey.triggerMode") }}</Label>
           <div class="flex rounded-lg border border-border overflow-hidden">
             <button
               type="button"
@@ -639,8 +653,8 @@ onBeforeUnmount(() => {
         <p class="text-sm text-muted-foreground leading-relaxed">
           {{
             settingsStore.triggerMode === "hold"
-              ? "按住錄音，放開停止"
-              : "按一下開始，再按停止"
+              ? $t("settings.hotkey.holdDescription")
+              : $t("settings.hotkey.toggleDescription")
           }}
         </p>
 
@@ -678,28 +692,19 @@ onBeforeUnmount(() => {
           rel="noreferrer"
           class="text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
-          前往 Groq Console &rarr;
+          {{ $t("settings.apiKey.goToConsole") }} &rarr;
         </a>
       </CardHeader>
       <CardContent class="space-y-4">
         <p class="text-sm text-muted-foreground leading-relaxed">
-          請在
-          <a
-            href="https://console.groq.com/keys"
-            target="_blank"
-            rel="noreferrer"
-            class="text-primary hover:underline"
-          >
-            Groq Console
-          </a>
-          產生 API Key 後貼上。
+          {{ $t("settings.apiKey.instruction") }}
         </p>
 
         <p
           v-if="shouldShowOnboardingHint"
           class="rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-2 text-sm text-blue-200"
         >
-          歡迎使用 SayIt！請先設定 Groq API Key 以啟用語音輸入功能。
+          {{ $t("settings.apiKey.onboarding") }}
         </p>
 
         <div class="flex gap-2">
@@ -717,14 +722,14 @@ onBeforeUnmount(() => {
               class="shrink-0"
               @click="toggleApiKeyVisibility"
             >
-              {{ isApiKeyVisible ? "隱藏" : "顯示" }}
+              {{ isApiKeyVisible ? $t("settings.apiKey.hide") : $t("settings.apiKey.show") }}
             </Button>
           </div>
           <Button
             :disabled="isSubmittingApiKey"
             @click="handleSaveApiKey"
           >
-            儲存
+            {{ $t("common.save") }}
           </Button>
         </div>
 
@@ -752,7 +757,7 @@ onBeforeUnmount(() => {
             :disabled="isSubmittingApiKey"
             @click="requestDeleteApiKey"
           >
-            {{ isConfirmingDeleteApiKey ? '確認刪除？' : '刪除 API Key' }}
+            {{ isConfirmingDeleteApiKey ? $t('settings.apiKey.confirmDelete') : $t('settings.apiKey.delete') }}
           </Button>
         </div>
       </CardContent>
@@ -761,16 +766,16 @@ onBeforeUnmount(() => {
     <!-- 模型選擇 -->
     <Card>
       <CardHeader class="border-b border-border">
-        <CardTitle class="text-base">模型選擇</CardTitle>
+        <CardTitle class="text-base">{{ $t("settings.model.title") }}</CardTitle>
       </CardHeader>
       <CardContent class="space-y-5">
         <p class="text-sm text-muted-foreground leading-relaxed">
-          選擇語音轉錄和文字整理使用的 AI 模型。速度較快的模型回應更即時，較大的模型品質更好。
+          {{ $t("settings.model.description") }}
         </p>
 
         <!-- Whisper 模型 -->
         <div class="space-y-2">
-          <Label for="whisper-model">語音轉錄模型（Whisper）</Label>
+          <Label for="whisper-model">{{ $t("settings.model.whisperLabel") }}</Label>
           <Select
             :model-value="settingsStore.selectedWhisperModelId"
             @update:model-value="handleWhisperModelChange($event as WhisperModelId)"
@@ -784,10 +789,8 @@ onBeforeUnmount(() => {
                 :key="model.id"
                 :value="model.id"
               >
-                <div class="flex items-center gap-2">
-                  <span>{{ model.displayName }}</span>
-                  <Badge v-if="model.isDefault" variant="secondary" class="text-xs">預設</Badge>
-                </div>
+                <span>{{ model.displayName }}</span>
+                <Badge v-if="model.isDefault" variant="secondary" class="text-xs">{{ $t("settings.model.default") }}</Badge>
               </SelectItem>
             </SelectContent>
           </Select>
@@ -796,7 +799,7 @@ onBeforeUnmount(() => {
 
         <!-- LLM 模型 -->
         <div class="space-y-2">
-          <Label for="llm-model">文字整理模型（LLM）</Label>
+          <Label for="llm-model">{{ $t("settings.model.llmLabel") }}</Label>
           <Select
             :model-value="settingsStore.selectedLlmModelId"
             @update:model-value="handleLlmModelChange($event as LlmModelId)"
@@ -810,10 +813,8 @@ onBeforeUnmount(() => {
                 :key="model.id"
                 :value="model.id"
               >
-                <div class="flex items-center gap-2">
-                  <span>{{ model.displayName }}</span>
-                  <Badge v-if="model.isDefault" variant="secondary" class="text-xs">預設</Badge>
-                </div>
+                <span>{{ model.displayName }}</span>
+                <Badge v-if="model.isDefault" variant="secondary" class="text-xs">{{ $t("settings.model.default") }}</Badge>
               </SelectItem>
             </SelectContent>
           </Select>
@@ -839,11 +840,11 @@ onBeforeUnmount(() => {
     <!-- AI 整理 Prompt -->
     <Card>
       <CardHeader class="border-b border-border">
-        <CardTitle class="text-base">AI 整理 Prompt</CardTitle>
+        <CardTitle class="text-base">{{ $t("settings.prompt.title") }}</CardTitle>
       </CardHeader>
       <CardContent class="space-y-4">
         <p class="text-sm text-muted-foreground">
-          自訂 AI 整理文字時使用的系統提示詞。修改後點擊儲存。
+          {{ $t("settings.prompt.description") }}
         </p>
 
         <Textarea
@@ -856,7 +857,7 @@ onBeforeUnmount(() => {
             :disabled="isSubmittingPrompt"
             @click="handleSavePrompt"
           >
-            儲存
+            {{ $t("common.save") }}
           </Button>
           <Button
             variant="outline"
@@ -868,7 +869,7 @@ onBeforeUnmount(() => {
             :disabled="isSubmittingPrompt"
             @click="requestResetPrompt"
           >
-            {{ isConfirmingResetPrompt ? '確認重置？' : '重置為預設' }}
+            {{ isConfirmingResetPrompt ? $t('settings.prompt.confirmReset') : $t('settings.prompt.reset') }}
           </Button>
         </div>
 
@@ -891,15 +892,15 @@ onBeforeUnmount(() => {
     <!-- 短文字門檻 -->
     <Card>
       <CardHeader class="border-b border-border">
-        <CardTitle class="text-base">短文字門檻</CardTitle>
+        <CardTitle class="text-base">{{ $t("settings.threshold.title") }}</CardTitle>
       </CardHeader>
       <CardContent class="space-y-4">
         <p class="text-sm text-muted-foreground leading-relaxed">
-          啟用後，低於指定字數的轉錄文字將跳過 AI 整理，直接貼上原文。停用則每次都做 AI 整理。
+          {{ $t("settings.threshold.description") }}
         </p>
 
         <div class="flex items-center justify-between">
-          <Label for="threshold-toggle">{{ thresholdEnabled ? '已啟用' : '已停用' }}</Label>
+          <Label for="threshold-toggle">{{ thresholdEnabled ? $t('settings.threshold.enabled') : $t('settings.threshold.disabled') }}</Label>
           <Switch
             id="threshold-toggle"
             :model-value="thresholdEnabled"
@@ -908,7 +909,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-if="thresholdEnabled" class="flex items-center gap-3">
-          <Label for="threshold-char-count">門檻字數</Label>
+          <Label for="threshold-char-count">{{ $t("settings.threshold.charCount") }}</Label>
           <Input
             id="threshold-char-count"
             v-model.number="thresholdCharCount"
@@ -920,7 +921,7 @@ onBeforeUnmount(() => {
             size="sm"
             @click="handleSaveThresholdCharCount"
           >
-            儲存
+            {{ $t("common.save") }}
           </Button>
         </div>
 
@@ -943,13 +944,51 @@ onBeforeUnmount(() => {
     <!-- 應用程式 -->
     <Card>
       <CardHeader class="border-b border-border">
-        <CardTitle class="text-base">應用程式</CardTitle>
+        <CardTitle class="text-base">{{ $t("settings.app.title") }}</CardTitle>
       </CardHeader>
       <CardContent class="space-y-4">
+        <!-- 介面語言 -->
+        <div class="flex items-center justify-between">
+          <Label for="locale-select">{{ $t("settings.app.language") }}</Label>
+          <Select
+            :model-value="settingsStore.selectedLocale"
+            @update:model-value="handleLocaleChange($event as SupportedLocale)"
+          >
+            <SelectTrigger id="locale-select" class="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="opt in LANGUAGE_OPTIONS"
+                :key="opt.locale"
+                :value="opt.locale"
+              >
+                {{ opt.displayName }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <transition name="feedback-fade">
+          <p
+            v-if="localeFeedback.message.value !== ''"
+            class="text-sm"
+            :class="
+              localeFeedback.type.value === 'success'
+                ? 'text-green-400'
+                : 'text-red-400'
+            "
+          >
+            {{ localeFeedback.message.value }}
+          </p>
+        </transition>
+
+        <div class="border-t border-border" />
+
         <div class="flex items-center justify-between">
           <div>
-            <Label for="mute-on-recording">錄音時自動靜音</Label>
-            <p class="text-sm text-muted-foreground">開始錄音時自動靜音系統喇叭，結束後恢復</p>
+            <Label for="mute-on-recording">{{ $t("settings.app.muteOnRecording") }}</Label>
+            <p class="text-sm text-muted-foreground">{{ $t("settings.app.muteDescription") }}</p>
           </div>
           <Switch
             id="mute-on-recording"
@@ -976,8 +1015,8 @@ onBeforeUnmount(() => {
 
         <div class="flex items-center justify-between">
           <div>
-            <Label for="auto-start">開機自動啟動</Label>
-            <p class="text-sm text-muted-foreground">登入系統後自動啟動 SayIt</p>
+            <Label for="auto-start">{{ $t("settings.app.autoStart") }}</Label>
+            <p class="text-sm text-muted-foreground">{{ $t("settings.app.autoStartDescription") }}</p>
           </div>
           <Switch
             id="auto-start"

@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import type { DailyUsageTrend } from "@/types/transcription";
 import type { ChartConfig } from "@/components/ui/chart";
+import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { VisArea, VisAxis, VisLine, VisXYContainer } from "@unovis/vue";
 import {
   ChartContainer,
@@ -11,10 +13,11 @@ import {
 } from "@/components/ui/chart";
 
 const props = defineProps<{ data: DailyUsageTrend[] }>();
+const { t } = useI18n();
 
-const chartConfig = {
-  count: { label: "使用次數", color: "var(--chart-1)" },
-} satisfies ChartConfig;
+const chartConfig = computed(() => ({
+  count: { label: t("dashboard.usageCount"), color: "var(--chart-1)" },
+}) satisfies ChartConfig);
 
 const svgDefs = `
   <linearGradient id="fillCount" x1="0" y1="0" x2="0" y2="1">
@@ -26,7 +29,7 @@ const svgDefs = `
 const xAccessor = (d: DailyUsageTrend) => new Date(d.date);
 const yAccessor = [(d: DailyUsageTrend) => d.count];
 const fillColor = () => "url(#fillCount)";
-const lineColor = () => chartConfig.count.color;
+const lineColor = () => chartConfig.value.count.color;
 
 function formatDateLabel(d: number): string {
   const date = new Date(d);
@@ -38,7 +41,7 @@ function formatDateLabel(d: number): string {
 
 <template>
   <div v-if="props.data.length === 0" class="rounded-lg border border-dashed border-border px-4 py-8 text-center text-muted-foreground">
-    尚無使用記錄
+    {{ $t("dashboard.noRecords") }}
   </div>
 
   <ChartContainer v-else :config="chartConfig" class="aspect-auto h-[200px] w-full" :cursor="false">

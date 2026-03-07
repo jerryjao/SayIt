@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Settings,
 } from "lucide-vue-next";
+import { useI18n } from "vue-i18n";
 import { computed, markRaw, onMounted, ref } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import AccessibilityGuide from "./components/AccessibilityGuide.vue";
@@ -40,17 +41,18 @@ import {
 
 declare const __APP_VERSION__: string;
 const appVersion = __APP_VERSION__;
+const { t } = useI18n();
 
-const navItems = [
-  { path: "/dashboard", label: "儀表板", icon: markRaw(LayoutDashboard) },
-  { path: "/history", label: "歷史記錄", icon: markRaw(FileText) },
-  { path: "/dictionary", label: "自訂字典", icon: markRaw(BookOpen) },
-  { path: "/settings", label: "設定", icon: markRaw(Settings) },
-];
+const navItems = computed(() => [
+  { path: "/dashboard", label: t("mainApp.nav.dashboard"), icon: markRaw(LayoutDashboard) },
+  { path: "/history", label: t("mainApp.nav.history"), icon: markRaw(FileText) },
+  { path: "/dictionary", label: t("mainApp.nav.dictionary"), icon: markRaw(BookOpen) },
+  { path: "/settings", label: t("mainApp.nav.settings"), icon: markRaw(Settings) },
+]);
 
 const route = useRoute();
 const currentPageTitle = computed(() => {
-  const item = navItems.find((n) => route.path.startsWith(n.path));
+  const item = navItems.value.find((n) => route.path.startsWith(n.path));
   return item?.label ?? "SayIt";
 });
 
@@ -96,7 +98,7 @@ async function handleAutoInstall() {
     await installAndRelaunch();
   } catch (err) {
     console.error("[main-window] Auto install failed:", err);
-    updateFeedback.show("error", "安裝失敗，請手動下載更新");
+    updateFeedback.show("error", t("mainApp.update.installFailed"));
     updateState.value = "idle";
     availableVersion.value = "";
   }
@@ -130,21 +132,21 @@ async function handleManualCheck() {
     handleManualCheckResult(result);
   } catch (err) {
     console.error("[main-window] Manual update check failed:", err);
-    updateFeedback.show("error", "檢查更新時發生錯誤");
+    updateFeedback.show("error", t("mainApp.update.checkError"));
     updateState.value = "idle";
   }
 }
 
 function handleManualCheckResult(result: UpdateCheckResult) {
   if (result.status === "up-to-date") {
-    updateFeedback.show("success", "已是最新版本");
+    updateFeedback.show("success", t("mainApp.update.upToDate"));
     updateState.value = "idle";
   } else if (result.status === "update-available") {
     availableVersion.value = result.version ?? "";
     updateState.value = "idle";
     showManualUpdateDialog.value = true;
   } else {
-    updateFeedback.show("error", "檢查失敗，請確認網路連線");
+    updateFeedback.show("error", t("mainApp.update.checkFailed"));
     updateState.value = "idle";
   }
 }
@@ -158,7 +160,7 @@ async function handleManualUpdate() {
     await downloadInstallAndRelaunch();
   } catch (err) {
     console.error("[main-window] Manual update failed:", err);
-    updateFeedback.show("error", "更新失敗，請手動下載");
+    updateFeedback.show("error", t("mainApp.update.updateFailed"));
     updateState.value = "idle";
     availableVersion.value = "";
   }
@@ -167,10 +169,10 @@ async function handleManualUpdate() {
 // ── Sidebar footer 顯示邏輯 ──
 const updateButtonLabel = computed(() => {
   switch (updateState.value) {
-    case "checking": return "檢查中...";
-    case "downloading": return "下載中...";
-    case "installing": return "安裝中...";
-    default: return "檢查更新";
+    case "checking": return t("mainApp.update.checking");
+    case "downloading": return t("mainApp.update.downloading");
+    case "installing": return t("mainApp.update.installing");
+    default: return t("mainApp.update.checkUpdate");
   }
 });
 
@@ -253,14 +255,14 @@ onMounted(async () => {
         </div>
         <!-- 自動下載完成：顯示持久的安裝提示 -->
         <div v-if="updateState === 'ready-to-install'" class="mt-1.5 flex items-center justify-between rounded-md bg-primary/10 px-2 py-1.5">
-          <span class="text-xs font-medium text-primary">v{{ availableVersion }} 已就緒</span>
+          <span class="text-xs font-medium text-primary">v{{ availableVersion }} {{ $t("mainApp.update.ready") }}</span>
           <Button
             size="sm"
             class="h-6 gap-1 px-2 text-xs"
             @click="handleSidebarInstall"
           >
             <Download class="h-3 w-3" />
-            立即安裝
+            {{ $t("mainApp.update.installNow") }}
           </Button>
         </div>
         <p
@@ -290,14 +292,14 @@ onMounted(async () => {
   <AlertDialog :open="showAutoInstallDialog">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>更新已就緒</AlertDialogTitle>
+        <AlertDialogTitle>{{ $t("mainApp.update.autoInstallTitle") }}</AlertDialogTitle>
         <AlertDialogDescription>
-          SayIt v{{ availableVersion }} 已下載完成。安裝後需要重新啟動應用程式。
+          {{ $t("mainApp.update.autoInstallDescription", { version: availableVersion }) }}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel @click="handleAutoInstallLater">稍後</AlertDialogCancel>
-        <AlertDialogAction @click="handleAutoInstall">安裝並重啟</AlertDialogAction>
+        <AlertDialogCancel @click="handleAutoInstallLater">{{ $t("mainApp.update.later") }}</AlertDialogCancel>
+        <AlertDialogAction @click="handleAutoInstall">{{ $t("mainApp.update.installRestart") }}</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>
@@ -306,14 +308,14 @@ onMounted(async () => {
   <AlertDialog :open="showManualUpdateDialog">
     <AlertDialogContent>
       <AlertDialogHeader>
-        <AlertDialogTitle>發現新版本</AlertDialogTitle>
+        <AlertDialogTitle>{{ $t("mainApp.update.newVersionTitle") }}</AlertDialogTitle>
         <AlertDialogDescription>
-          SayIt v{{ availableVersion }} 已可供更新。點擊開始更新將自動下載並重新啟動應用程式。
+          {{ $t("mainApp.update.newVersionDescription", { version: availableVersion }) }}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel @click="showManualUpdateDialog = false">取消</AlertDialogCancel>
-        <AlertDialogAction @click="handleManualUpdate">開始更新</AlertDialogAction>
+        <AlertDialogCancel @click="showManualUpdateDialog = false">{{ $t("mainApp.update.cancel") }}</AlertDialogCancel>
+        <AlertDialogAction @click="handleManualUpdate">{{ $t("mainApp.update.startUpdate") }}</AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>
   </AlertDialog>

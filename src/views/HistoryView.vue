@@ -105,7 +105,7 @@ onBeforeUnmount(() => {
       <Input
         v-model="searchInput"
         type="text"
-        placeholder="搜尋轉錄記錄..."
+        :placeholder="$t('history.searchPlaceholder')"
         class="w-full pl-9"
         @input="handleSearchInput"
       />
@@ -119,7 +119,7 @@ onBeforeUnmount(() => {
           v-if="historyStore.isLoading && historyStore.transcriptionList.length === 0"
           class="text-center text-muted-foreground py-12"
         >
-          載入中...
+          {{ $t("history.loading") }}
         </div>
 
         <!-- 空狀態 -->
@@ -128,10 +128,10 @@ onBeforeUnmount(() => {
           class="py-12 text-center text-muted-foreground"
         >
           <template v-if="searchInput.trim()">
-            找不到符合「{{ searchInput.trim() }}」的記錄
+            {{ $t("history.noResults", { query: searchInput.trim() }) }}
           </template>
           <template v-else>
-            尚無轉錄記錄，開始使用語音輸入吧！
+            {{ $t("history.emptyState") }}
           </template>
         </div>
 
@@ -156,7 +156,7 @@ onBeforeUnmount(() => {
                     v-if="record.wasEnhanced"
                     class="bg-emerald-500/20 text-emerald-400 border-0 text-[11px]"
                   >
-                    AI 整理
+                    {{ $t("dashboard.aiEnhanced") }}
                   </Badge>
                 </div>
                 <div class="flex items-center gap-2">
@@ -191,7 +191,7 @@ onBeforeUnmount(() => {
             >
               <!-- 整理後文字 -->
               <div v-if="record.wasEnhanced && record.processedText">
-                <p class="text-xs font-medium text-emerald-400 mb-1">整理後文字</p>
+                <p class="text-xs font-medium text-emerald-400 mb-1">{{ $t("history.enhancedText") }}</p>
                 <p class="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
                   {{ record.processedText }}
                 </p>
@@ -199,7 +199,7 @@ onBeforeUnmount(() => {
 
               <!-- 原始文字 -->
               <div>
-                <p class="text-xs font-medium text-muted-foreground mb-1">原始文字</p>
+                <p class="text-xs font-medium text-muted-foreground mb-1">{{ $t("history.rawText") }}</p>
                 <p class="text-sm text-foreground leading-relaxed whitespace-pre-wrap">
                   {{ record.rawText }}
                 </p>
@@ -207,13 +207,13 @@ onBeforeUnmount(() => {
 
               <!-- 詳細資訊 -->
               <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground border-t border-border pt-3">
-                <span>錄音：{{ formatDurationMs(record.recordingDurationMs) }}</span>
-                <span>轉錄：{{ formatDurationMs(record.transcriptionDurationMs) }}</span>
+                <span>{{ $t("history.recordingLabel") }}{{ formatDurationMs(record.recordingDurationMs) }}</span>
+                <span>{{ $t("history.transcriptionLabel") }}{{ formatDurationMs(record.transcriptionDurationMs) }}</span>
                 <span v-if="record.enhancementDurationMs !== null">
-                  AI：{{ formatDurationMs(record.enhancementDurationMs) }}
+                  {{ $t("history.aiLabel") }}{{ formatDurationMs(record.enhancementDurationMs) }}
                 </span>
-                <span>字數：{{ record.charCount }}</span>
-                <span>模式：{{ record.triggerMode === "hold" ? "長按" : "切換" }}</span>
+                <span>{{ $t("history.charCountLabel") }}{{ record.charCount }}</span>
+                <span>{{ $t("history.modeLabel") }}{{ record.triggerMode === "hold" ? $t("history.holdMode") : $t("history.toggleMode") }}</span>
               </div>
 
               <!-- 操作按鈕 -->
@@ -225,14 +225,14 @@ onBeforeUnmount(() => {
                 >
                   <Check v-if="copiedRecordId === record.id" class="h-3.5 w-3.5 mr-1.5" />
                   <Copy v-else class="h-3.5 w-3.5 mr-1.5" />
-                  {{ copiedRecordId === record.id ? "已複製" : "複製" }}
+                  {{ copiedRecordId === record.id ? $t("history.copied") : $t("history.copy") }}
                 </Button>
                 <Button
                   variant="destructive"
                   size="sm"
                 >
                   <Trash2 class="h-3.5 w-3.5 mr-1.5" />
-                  刪除
+                  {{ $t("history.delete") }}
                 </Button>
               </div>
             </div>
@@ -244,7 +244,7 @@ onBeforeUnmount(() => {
           v-if="historyStore.isLoading && historyStore.transcriptionList.length > 0"
           class="py-4 text-center text-sm text-muted-foreground"
         >
-          載入更多...
+          {{ $t("history.loadingMore") }}
         </div>
 
         <!-- 無限捲動 sentinel -->

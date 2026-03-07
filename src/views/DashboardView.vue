@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useHistoryStore } from "../stores/useHistoryStore";
@@ -36,6 +37,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+const { t } = useI18n();
 const historyStore = useHistoryStore();
 const settingsStore = useSettingsStore();
 const router = useRouter();
@@ -53,19 +55,19 @@ const quotaDimensionList = computed(() => {
   return [
     {
       remaining: wRpdLimit > 0 ? 1 - usage.whisperRequestCount / wRpdLimit : 0,
-      label: `Whisper ${usage.whisperRequestCount}/${formatNumber(wRpdLimit)} 次`,
+      label: t("dashboard.quotaWhisperRequests", { used: usage.whisperRequestCount, limit: formatNumber(wRpdLimit) }),
     },
     {
       remaining: wAudioLimitMs > 0 ? 1 - usage.whisperBilledAudioMs / wAudioLimitMs : 0,
-      label: `音訊 ${formatDurationFromMs(usage.whisperBilledAudioMs)}/${formatDurationFromMs(wAudioLimitMs)}`,
+      label: t("dashboard.quotaAudio", { used: formatDurationFromMs(usage.whisperBilledAudioMs), limit: formatDurationFromMs(wAudioLimitMs) }),
     },
     {
       remaining: lRpdLimit > 0 ? 1 - usage.llmRequestCount / lRpdLimit : 0,
-      label: `LLM ${usage.llmRequestCount}/${formatNumber(lRpdLimit)} 次`,
+      label: t("dashboard.quotaLlmRequests", { used: usage.llmRequestCount, limit: formatNumber(lRpdLimit) }),
     },
     {
       remaining: lTpdLimit > 0 ? 1 - usage.llmTotalTokens / lTpdLimit : 0,
-      label: `LLM ${formatNumber(usage.llmTotalTokens)}/${formatNumber(lTpdLimit)} tokens`,
+      label: t("dashboard.quotaLlmTokens", { used: formatNumber(usage.llmTotalTokens), limit: formatNumber(lTpdLimit) }),
     },
   ];
 });
@@ -115,7 +117,7 @@ onBeforeUnmount(() => {
     <div class="mt-6 grid grid-cols-3 gap-4">
       <Card>
         <CardHeader class="pb-2">
-          <CardDescription>總口述時間</CardDescription>
+          <CardDescription>{{ $t("dashboard.totalRecordingTime") }}</CardDescription>
         </CardHeader>
         <CardContent>
           <p class="text-2xl font-bold text-foreground">
@@ -126,18 +128,18 @@ onBeforeUnmount(() => {
 
       <Card>
         <CardHeader class="pb-2">
-          <CardDescription>口述字數</CardDescription>
+          <CardDescription>{{ $t("dashboard.totalCharacters") }}</CardDescription>
         </CardHeader>
         <CardContent>
           <p class="text-2xl font-bold text-foreground">
-            {{ formatNumber(historyStore.dashboardStats.totalCharacters) }} 字
+            {{ formatNumber(historyStore.dashboardStats.totalCharacters) }} {{ $t("dashboard.characterUnit") }}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader class="pb-2">
-          <CardDescription>節省時間</CardDescription>
+          <CardDescription>{{ $t("dashboard.timeSaved") }}</CardDescription>
         </CardHeader>
         <CardContent>
           <p class="text-2xl font-bold text-foreground">
@@ -148,22 +150,22 @@ onBeforeUnmount(() => {
 
       <Card>
         <CardHeader class="pb-2">
-          <CardDescription>總使用次數</CardDescription>
+          <CardDescription>{{ $t("dashboard.totalTranscriptions") }}</CardDescription>
         </CardHeader>
         <CardContent>
           <p class="text-2xl font-bold text-foreground">
-            {{ formatNumber(historyStore.dashboardStats.totalTranscriptions) }} 次
+            {{ formatNumber(historyStore.dashboardStats.totalTranscriptions) }} {{ $t("dashboard.transcriptionUnit") }}
           </p>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader class="pb-2">
-          <CardDescription>平均每次字數</CardDescription>
+          <CardDescription>{{ $t("dashboard.avgCharacters") }}</CardDescription>
         </CardHeader>
         <CardContent>
           <p class="text-2xl font-bold text-foreground">
-            {{ historyStore.dashboardStats.totalTranscriptions > 0 ? formatNumber(Math.round(historyStore.dashboardStats.totalCharacters / historyStore.dashboardStats.totalTranscriptions)) : 0 }} 字
+            {{ historyStore.dashboardStats.totalTranscriptions > 0 ? formatNumber(Math.round(historyStore.dashboardStats.totalCharacters / historyStore.dashboardStats.totalTranscriptions)) : 0 }} {{ $t("dashboard.characterUnit") }}
           </p>
         </CardContent>
       </Card>
@@ -173,7 +175,7 @@ onBeforeUnmount(() => {
           <TooltipTrigger as-child>
             <Card class="cursor-default">
               <CardHeader class="pb-2">
-                <CardDescription>今日剩餘免費額度</CardDescription>
+                <CardDescription>{{ $t("dashboard.dailyQuota") }}</CardDescription>
               </CardHeader>
               <CardContent>
                 <p class="text-2xl font-bold text-foreground">
@@ -193,7 +195,7 @@ onBeforeUnmount(() => {
             </Card>
           </TooltipTrigger>
           <TooltipContent class="w-72 p-3 bg-card text-card-foreground border border-border" side="bottom" :side-offset="6" hide-arrow>
-            <p class="text-xs font-medium mb-2">今日剩餘免費額度明細</p>
+            <p class="text-xs font-medium mb-2">{{ $t("dashboard.dailyQuotaDetail") }}</p>
             <div class="space-y-2">
               <div v-for="(dim, idx) in quotaDimensionList" :key="idx">
                 <div class="flex items-center justify-between text-xs">
@@ -217,8 +219,8 @@ onBeforeUnmount(() => {
     <!-- 每日使用趨勢圖表 -->
     <Card class="mt-6">
       <CardHeader>
-        <CardTitle class="text-base">每日使用趨勢</CardTitle>
-        <CardDescription>最近 30 天</CardDescription>
+        <CardTitle class="text-base">{{ $t("dashboard.usageTrend") }}</CardTitle>
+        <CardDescription>{{ $t("dashboard.last30Days") }}</CardDescription>
       </CardHeader>
       <CardContent>
         <DashboardUsageChart :data="historyStore.dailyUsageTrendList" />
@@ -228,13 +230,13 @@ onBeforeUnmount(() => {
     <!-- 最近轉錄 -->
     <Card class="mt-6">
       <CardHeader class="flex-row items-center justify-between">
-        <CardTitle class="text-base">最近轉錄</CardTitle>
+        <CardTitle class="text-base">{{ $t("dashboard.recentTranscriptions") }}</CardTitle>
         <Button
           v-if="historyStore.recentTranscriptionList.length > 0"
           variant="link"
           @click="navigateToHistory"
         >
-          查看全部
+          {{ $t("dashboard.viewAll") }}
         </Button>
       </CardHeader>
       <CardContent>
@@ -243,7 +245,7 @@ onBeforeUnmount(() => {
           v-if="historyStore.recentTranscriptionList.length === 0"
           class="rounded-lg border border-dashed border-border px-4 py-8 text-center text-muted-foreground"
         >
-          開始使用語音輸入，統計數據將在此顯示
+          {{ $t("dashboard.emptyState") }}
         </div>
 
         <!-- 最近列表 -->
@@ -263,7 +265,7 @@ onBeforeUnmount(() => {
                 v-if="record.wasEnhanced"
                 class="bg-emerald-500/20 text-emerald-400 border-0"
               >
-                AI 整理
+                {{ $t("dashboard.aiEnhanced") }}
               </Badge>
             </div>
             <p class="mt-1 text-sm text-muted-foreground truncate w-full">
