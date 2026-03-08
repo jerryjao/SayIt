@@ -97,7 +97,11 @@
       "autoStart": "ログイン時に自動起動",
       "autoStartDescription": "システムログイン後に SayIt を自動的に起動します",
       "autoStartEnabled": "自動起動を有効にしました",
-      "autoStartDisabled": "自動起動を無効にしました"
+      "autoStartDisabled": "自動起動を無効にしました",
+      "transcriptionLanguage": "文字起こし言語",
+      "transcriptionLanguageDescription": "音声認識に使用する言語",
+      "transcriptionLanguageUpdated": "文字起こし言語が更新されました",
+      "autoDetect": "自動検出"
     }
   },
   "dashboard": {

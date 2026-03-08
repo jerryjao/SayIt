@@ -26,7 +26,8 @@ export type SettingsKey =
   | "llmModel"
   | "whisperModel"
   | "muteOnRecording"
-  | "locale";
+  | "locale"
+  | "transcriptionLocale";
 
 export interface SettingsUpdatedPayload {
   key: SettingsKey;

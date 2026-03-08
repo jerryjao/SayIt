@@ -443,6 +443,82 @@ describe("useSettingsStore", () => {
   });
 
   // ==========================================================================
+  // selectedTranscriptionLocale
+  // ==========================================================================
+
+  describe("selectedTranscriptionLocale", () => {
+    it("[P0] loadSettings 應從 store 載入已儲存的 transcriptionLocale", async () => {
+      mockStoreData.set("selectedLocale", "en");
+      mockStoreData.set("selectedTranscriptionLocale", "ja");
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.loadSettings();
+
+      expect(store.selectedTranscriptionLocale).toBe("ja");
+    });
+
+    it("[P0] store 無 selectedTranscriptionLocale 時應預設為 selectedLocale（遷移）", async () => {
+      mockStoreData.set("selectedLocale", "ko");
+      // 不設定 selectedTranscriptionLocale 以觸發遷移邏輯
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.loadSettings();
+
+      expect(store.selectedTranscriptionLocale).toBe("ko");
+      expect(mockStoreSet).toHaveBeenCalledWith(
+        "selectedTranscriptionLocale",
+        "ko",
+      );
+    });
+
+    it("[P0] getWhisperLanguageCode 應讀取 selectedTranscriptionLocale（非 selectedLocale）", async () => {
+      mockStoreData.set("selectedLocale", "en");
+      mockStoreData.set("selectedTranscriptionLocale", "ja");
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.loadSettings();
+
+      // transcriptionLocale 是 ja，不是 UI locale en
+      expect(store.getWhisperLanguageCode()).toBe("ja");
+    });
+
+    it("[P0] getWhisperLanguageCode 在 auto 模式下應回傳 null", async () => {
+      mockStoreData.set("selectedLocale", "zh-TW");
+      mockStoreData.set("selectedTranscriptionLocale", "auto");
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.loadSettings();
+
+      expect(store.getWhisperLanguageCode()).toBeNull();
+    });
+
+    it("[P0] refreshCrossWindowSettings 應同步 selectedTranscriptionLocale", async () => {
+      mockStoreData.set("selectedLocale", "en");
+      mockStoreData.set("selectedTranscriptionLocale", "ja");
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.refreshCrossWindowSettings();
+
+      expect(store.selectedTranscriptionLocale).toBe("ja");
+    });
+  });
+
+  // ==========================================================================
   // saveLocale
   // ==========================================================================
 

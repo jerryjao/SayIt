@@ -97,7 +97,11 @@
       "autoStart": "부팅 시 자동 시작",
       "autoStartDescription": "시스템 로그인 후 SayIt을 자동으로 시작합니다",
       "autoStartEnabled": "부팅 시 자동 시작이 활성화되었습니다",
-      "autoStartDisabled": "부팅 시 자동 시작이 비활성화되었습니다"
+      "autoStartDisabled": "부팅 시 자동 시작이 비활성화되었습니다",
+      "transcriptionLanguage": "전사 언어",
+      "transcriptionLanguageDescription": "음성 인식에 사용할 언어",
+      "transcriptionLanguageUpdated": "전사 언어가 업데이트되었습니다",
+      "autoDetect": "자동 감지"
     }
   },
   "dashboard": {

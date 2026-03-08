@@ -107,6 +107,104 @@ describe("i18n 設定功能", () => {
   });
 
   // ==========================================================================
+  // TranscriptionLocale 型別與 auto 選項
+  // ==========================================================================
+
+  describe("TranscriptionLocale", () => {
+    it("[P0] getWhisperCodeForTranscriptionLocale('auto') 應回傳 null", async () => {
+      const { getWhisperCodeForTranscriptionLocale } = await import(
+        "../../src/i18n/languageConfig"
+      );
+      expect(getWhisperCodeForTranscriptionLocale("auto")).toBeNull();
+    });
+
+    it("[P0] getWhisperCodeForTranscriptionLocale 各語言應回傳正確的 whisperCode", async () => {
+      const { getWhisperCodeForTranscriptionLocale } = await import(
+        "../../src/i18n/languageConfig"
+      );
+      expect(getWhisperCodeForTranscriptionLocale("zh-TW")).toBe("zh");
+      expect(getWhisperCodeForTranscriptionLocale("en")).toBe("en");
+      expect(getWhisperCodeForTranscriptionLocale("ja")).toBe("ja");
+      expect(getWhisperCodeForTranscriptionLocale("zh-CN")).toBe("zh");
+      expect(getWhisperCodeForTranscriptionLocale("ko")).toBe("ko");
+    });
+
+    it("[P0] TRANSCRIPTION_LANGUAGE_OPTIONS 應包含 auto + 5 個語言選項", async () => {
+      const { TRANSCRIPTION_LANGUAGE_OPTIONS } = await import(
+        "../../src/i18n/languageConfig"
+      );
+      expect(TRANSCRIPTION_LANGUAGE_OPTIONS).toHaveLength(6);
+      expect(TRANSCRIPTION_LANGUAGE_OPTIONS[0].locale).toBe("auto");
+      expect(TRANSCRIPTION_LANGUAGE_OPTIONS[0].whisperCode).toBeNull();
+
+      const localeList = TRANSCRIPTION_LANGUAGE_OPTIONS.map(
+        (opt: { locale: string }) => opt.locale,
+      );
+      expect(localeList).toContain("auto");
+      expect(localeList).toContain("zh-TW");
+      expect(localeList).toContain("en");
+      expect(localeList).toContain("ja");
+      expect(localeList).toContain("zh-CN");
+      expect(localeList).toContain("ko");
+    });
+  });
+
+  // ==========================================================================
+  // saveTranscriptionLocale
+  // ==========================================================================
+
+  describe("saveTranscriptionLocale", () => {
+    it("[P0] saveTranscriptionLocale('ja') 應正確存入 store", async () => {
+      mockStoreData.set("selectedLocale", "zh-TW");
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.loadSettings();
+
+      await store.saveTranscriptionLocale("ja");
+
+      expect(mockStoreSet).toHaveBeenCalledWith(
+        "selectedTranscriptionLocale",
+        "ja",
+      );
+      expect(mockStoreSave).toHaveBeenCalled();
+    });
+
+    it("[P0] saveTranscriptionLocale 應發送 SETTINGS_UPDATED event", async () => {
+      mockStoreData.set("selectedLocale", "zh-TW");
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.loadSettings();
+
+      await store.saveTranscriptionLocale("en");
+
+      expect(mockEmit).toHaveBeenCalledWith("settings:updated", {
+        key: "transcriptionLocale",
+        value: "en",
+      });
+    });
+
+    it("[P0] saveTranscriptionLocale('auto') 後 getWhisperLanguageCode 應回傳 null", async () => {
+      mockStoreData.set("selectedLocale", "zh-TW");
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.loadSettings();
+
+      await store.saveTranscriptionLocale("auto");
+
+      expect(store.getWhisperLanguageCode()).toBeNull();
+    });
+  });
+
+  // ==========================================================================
   // detectSystemLocale
   // ==========================================================================
 
@@ -171,8 +269,8 @@ describe("i18n 設定功能", () => {
   // Prompt auto-switch
   // ==========================================================================
 
-  describe("語言切換 prompt 連動", () => {
-    it("[P0] 未自訂 prompt 時，切換語言應自動更新為新語言預設", async () => {
+  describe("轉錄語言切換 prompt 連動", () => {
+    it("[P0] 未自訂 prompt 時，切換轉錄語言應自動更新為新語言預設", async () => {
       // 明確設定起始 locale 為 zh-TW（避免 jsdom 環境 detectSystemLocale 不穩定）
       mockStoreData.set("selectedLocale", "zh-TW");
 
@@ -188,14 +286,21 @@ describe("i18n 設定功能", () => {
       const zhDefault = getDefaultPromptForLocale("zh-TW");
       expect(store.getAiPrompt()).toBe(zhDefault);
 
-      // 切換為 English
-      await store.saveLocale("en");
+      // 切換轉錄語言為 English（prompt 應跟著切換，但不存檔）
+      mockStoreSet.mockClear();
+      await store.saveTranscriptionLocale("en");
 
       const enDefault = getDefaultPromptForLocale("en");
       expect(store.getAiPrompt()).toBe(enDefault);
+
+      // prompt 不應被自動寫入 store（使用者需手動儲存）
+      const aiPromptSetCallList = mockStoreSet.mock.calls.filter(
+        ([key]: [string, unknown]) => key === "aiPrompt",
+      );
+      expect(aiPromptSetCallList).toHaveLength(0);
     });
 
-    it("[P0] 已自訂 prompt 時，切換語言不應改變 prompt", async () => {
+    it("[P0] 已自訂 prompt 時，切換轉錄語言不應改變 prompt", async () => {
       const customPrompt = "我的自訂 prompt 內容";
       mockStoreData.set("selectedLocale", "zh-TW");
       mockStoreData.set("aiPrompt", customPrompt);
@@ -208,9 +313,60 @@ describe("i18n 設定功能", () => {
 
       expect(store.getAiPrompt()).toBe(customPrompt);
 
-      await store.saveLocale("en");
+      await store.saveTranscriptionLocale("en");
 
       expect(store.getAiPrompt()).toBe(customPrompt);
+    });
+
+    it("[P0] 轉錄語言為特定語言時，切換 UI 語言不應改變 prompt", async () => {
+      mockStoreData.set("selectedLocale", "zh-TW");
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.loadSettings();
+
+      const { getDefaultPromptForLocale } = await import(
+        "../../src/i18n/prompts"
+      );
+      const zhDefault = getDefaultPromptForLocale("zh-TW");
+      expect(store.getAiPrompt()).toBe(zhDefault);
+
+      // 轉錄語言為 zh-TW（非 auto），切換 UI 語言不影響 prompt
+      await store.saveLocale("en");
+
+      expect(store.getAiPrompt()).toBe(zhDefault);
+    });
+
+    it("[P0] 轉錄語言為 auto 時，切換 UI 語言應更新 prompt（僅記憶體）", async () => {
+      mockStoreData.set("selectedLocale", "zh-TW");
+      mockStoreData.set("selectedTranscriptionLocale", "auto");
+
+      const { useSettingsStore } = await import(
+        "../../src/stores/useSettingsStore"
+      );
+      const store = useSettingsStore();
+      await store.loadSettings();
+
+      const { getDefaultPromptForLocale } = await import(
+        "../../src/i18n/prompts"
+      );
+      const zhDefault = getDefaultPromptForLocale("zh-TW");
+      expect(store.getAiPrompt()).toBe(zhDefault);
+
+      // 轉錄語言為 auto，切換 UI 語言 → prompt 跟著切換
+      mockStoreSet.mockClear();
+      await store.saveLocale("en");
+
+      const enDefault = getDefaultPromptForLocale("en");
+      expect(store.getAiPrompt()).toBe(enDefault);
+
+      // prompt 不應被自動寫入 store
+      const aiPromptSetCallList = mockStoreSet.mock.calls.filter(
+        ([key]: [string, unknown]) => key === "aiPrompt",
+      );
+      expect(aiPromptSetCallList).toHaveLength(0);
     });
   });
 

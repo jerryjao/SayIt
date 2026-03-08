@@ -22,15 +22,17 @@ import {
   getHotkeyUnsupportedKeyMessage,
   getHotkeyPresetHint,
 } from "../lib/errorUtils";
+import { captureError } from "../lib/sentry";
 import { getDefaultSystemPrompt } from "../lib/enhancer";
 import { getDefaultPromptForLocale } from "../i18n/prompts";
 import i18n from "../i18n";
 import {
   type SupportedLocale,
+  type TranscriptionLocale,
   FALLBACK_LOCALE,
   detectSystemLocale,
   getHtmlLangForLocale,
-  getWhisperCodeForLocale,
+  getWhisperCodeForTranscriptionLocale,
 } from "../i18n/languageConfig";
 import { emitEvent, SETTINGS_UPDATED } from "../composables/useTauriEvents";
 import type { SettingsUpdatedPayload } from "../types/events";
@@ -87,7 +89,15 @@ export const useSettingsStore = defineStore("settings", () => {
   const isMuteOnRecordingEnabled = ref<boolean>(DEFAULT_MUTE_ON_RECORDING);
   const customTriggerKeyDomCode = ref<string>("");
   const selectedLocale = ref<SupportedLocale>(FALLBACK_LOCALE);
+  const selectedTranscriptionLocale = ref<TranscriptionLocale>(FALLBACK_LOCALE);
   let isLoaded = false;
+
+  /** Resolve which SupportedLocale to use for prompt default (shared logic). */
+  function getEffectivePromptLocale(): SupportedLocale {
+    return selectedTranscriptionLocale.value === "auto"
+      ? selectedLocale.value
+      : selectedTranscriptionLocale.value;
+  }
 
   function getApiKey(): string {
     return apiKey.value;
@@ -104,6 +114,7 @@ export const useSettingsStore = defineStore("settings", () => {
         "[useSettingsStore] Failed to sync hotkey config:",
         extractErrorMessage(err),
       );
+      captureError(err, { source: "settings", step: "sync-hotkey" });
     }
   }
 
@@ -149,9 +160,22 @@ export const useSettingsStore = defineStore("settings", () => {
         selectedLocale.value,
       );
 
+      // Load transcription locale (migration: default to UI locale if missing)
+      const savedTranscriptionLocale = await store.get<TranscriptionLocale>(
+        "selectedTranscriptionLocale",
+      );
+      if (savedTranscriptionLocale) {
+        selectedTranscriptionLocale.value = savedTranscriptionLocale;
+      } else {
+        selectedTranscriptionLocale.value = selectedLocale.value;
+        await store.set("selectedTranscriptionLocale", selectedLocale.value);
+        await store.save();
+      }
+
       const savedPrompt = await store.get<string>("aiPrompt");
       aiPrompt.value =
-        savedPrompt?.trim() || getDefaultPromptForLocale(selectedLocale.value);
+        savedPrompt?.trim() ||
+        getDefaultPromptForLocale(getEffectivePromptLocale());
 
       const savedThresholdEnabled = await store.get<boolean>(
         "enhancementThresholdEnabled",
@@ -190,6 +214,7 @@ export const useSettingsStore = defineStore("settings", () => {
         "[useSettingsStore] loadSettings failed:",
         extractErrorMessage(err),
       );
+      captureError(err, { source: "settings", step: "load" });
 
       // Fallback to platform defaults
       const key = getDefaultTriggerKey();
@@ -229,6 +254,7 @@ export const useSettingsStore = defineStore("settings", () => {
         "[useSettingsStore] saveHotkeyConfig failed:",
         extractErrorMessage(err),
       );
+      captureError(err, { source: "settings", step: "save-hotkey" });
       throw err;
     }
   }
@@ -312,6 +338,7 @@ export const useSettingsStore = defineStore("settings", () => {
         "[useSettingsStore] saveApiKey failed:",
         extractErrorMessage(err),
       );
+      captureError(err, { source: "settings", step: "save-api-key" });
       throw err;
     }
   }
@@ -384,7 +411,9 @@ export const useSettingsStore = defineStore("settings", () => {
   async function resetAiPrompt() {
     try {
       const store = await load(STORE_NAME);
-      const defaultPrompt = getDefaultPromptForLocale(selectedLocale.value);
+      const defaultPrompt = getDefaultPromptForLocale(
+        getEffectivePromptLocale(),
+      );
       aiPrompt.value = defaultPrompt;
       await store.set("aiPrompt", defaultPrompt);
       await store.save();
@@ -517,6 +546,7 @@ export const useSettingsStore = defineStore("settings", () => {
   async function saveLocale(locale: SupportedLocale) {
     try {
       const store = await load(STORE_NAME);
+
       const oldLocale = selectedLocale.value;
 
       await store.set("selectedLocale", locale);
@@ -524,12 +554,12 @@ export const useSettingsStore = defineStore("settings", () => {
       i18n.global.locale.value = locale;
       document.documentElement.lang = getHtmlLangForLocale(locale);
 
-      // Prompt auto-switch: if current prompt equals old locale's default, update to new
-      const oldDefault = getDefaultPromptForLocale(oldLocale);
-      if (aiPrompt.value === oldDefault) {
-        const newDefault = getDefaultPromptForLocale(locale);
-        aiPrompt.value = newDefault;
-        await store.set("aiPrompt", newDefault);
+      // When transcription locale is "auto", prompt follows UI language (in-memory only)
+      if (selectedTranscriptionLocale.value === "auto") {
+        const oldDefault = getDefaultPromptForLocale(oldLocale);
+        if (aiPrompt.value === oldDefault) {
+          aiPrompt.value = getDefaultPromptForLocale(locale);
+        }
       }
 
       await store.save();
@@ -545,12 +575,56 @@ export const useSettingsStore = defineStore("settings", () => {
         "[useSettingsStore] saveLocale failed:",
         extractErrorMessage(err),
       );
+      captureError(err, { source: "settings", step: "save-locale" });
       throw err;
     }
   }
 
-  function getWhisperLanguageCode(): string {
-    return getWhisperCodeForLocale(selectedLocale.value);
+  async function saveTranscriptionLocale(locale: TranscriptionLocale) {
+    try {
+      const store = await load(STORE_NAME);
+      const oldTranscriptionLocale = selectedTranscriptionLocale.value;
+
+      await store.set("selectedTranscriptionLocale", locale);
+      selectedTranscriptionLocale.value = locale;
+
+      // Prompt auto-switch (in-memory only): user must explicitly save prompt
+      const oldPromptLocale: SupportedLocale =
+        oldTranscriptionLocale === "auto"
+          ? selectedLocale.value
+          : oldTranscriptionLocale;
+      const oldDefault = getDefaultPromptForLocale(oldPromptLocale);
+      if (aiPrompt.value === oldDefault) {
+        const newPromptLocale: SupportedLocale =
+          locale === "auto" ? selectedLocale.value : locale;
+        aiPrompt.value = getDefaultPromptForLocale(newPromptLocale);
+      }
+
+      await store.save();
+
+      const payload: SettingsUpdatedPayload = {
+        key: "transcriptionLocale",
+        value: locale,
+      };
+      await emitEvent(SETTINGS_UPDATED, payload);
+      console.log(`[useSettingsStore] Transcription locale saved: ${locale}`);
+    } catch (err) {
+      console.error(
+        "[useSettingsStore] saveTranscriptionLocale failed:",
+        extractErrorMessage(err),
+      );
+      captureError(err, {
+        source: "settings",
+        step: "save-transcription-locale",
+      });
+      throw err;
+    }
+  }
+
+  function getWhisperLanguageCode(): string | null {
+    return getWhisperCodeForTranscriptionLocale(
+      selectedTranscriptionLocale.value,
+    );
   }
 
   async function saveMuteOnRecording(enabled: boolean) {
@@ -571,6 +645,7 @@ export const useSettingsStore = defineStore("settings", () => {
         "[useSettingsStore] saveMuteOnRecording failed:",
         extractErrorMessage(err),
       );
+      captureError(err, { source: "settings", step: "save-mute" });
       throw err;
     }
   }
@@ -609,7 +684,7 @@ export const useSettingsStore = defineStore("settings", () => {
         savedCustomKey && isCustomTriggerKey(savedCustomKey)
           ? (savedCustomDomCode ?? "")
           : "";
-      // Locale must be synced first — aiPrompt fallback depends on it
+      // Locale + transcription locale must be synced first — aiPrompt fallback depends on them
       const savedLocale = await store.get<SupportedLocale>("selectedLocale");
       selectedLocale.value = savedLocale ?? FALLBACK_LOCALE;
       i18n.global.locale.value = selectedLocale.value;
@@ -617,9 +692,16 @@ export const useSettingsStore = defineStore("settings", () => {
         selectedLocale.value,
       );
 
+      const savedTranscriptionLocale = await store.get<TranscriptionLocale>(
+        "selectedTranscriptionLocale",
+      );
+      selectedTranscriptionLocale.value =
+        savedTranscriptionLocale ?? selectedLocale.value;
+
       apiKey.value = savedApiKey?.trim() ?? "";
       aiPrompt.value =
-        savedPrompt?.trim() || getDefaultPromptForLocale(selectedLocale.value);
+        savedPrompt?.trim() ||
+        getDefaultPromptForLocale(getEffectivePromptLocale());
       isEnhancementThresholdEnabled.value =
         savedThresholdEnabled ?? DEFAULT_ENHANCEMENT_THRESHOLD_ENABLED;
       enhancementThresholdCharCount.value =
@@ -637,6 +719,7 @@ export const useSettingsStore = defineStore("settings", () => {
         "[useSettingsStore] refreshCrossWindowSettings failed:",
         extractErrorMessage(err),
       );
+      captureError(err, { source: "settings", step: "refresh-cross-window" });
     }
   }
 
@@ -703,6 +786,8 @@ export const useSettingsStore = defineStore("settings", () => {
     saveMuteOnRecording,
     selectedLocale,
     saveLocale,
+    selectedTranscriptionLocale,
+    saveTranscriptionLocale,
     getWhisperLanguageCode,
     refreshCrossWindowSettings,
     loadAutoStartStatus,

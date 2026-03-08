@@ -97,7 +97,11 @@
       "autoStart": "开机自动启动",
       "autoStartDescription": "登录系统后自动启动 SayIt",
       "autoStartEnabled": "已启用开机自启动",
-      "autoStartDisabled": "已关闭开机自启动"
+      "autoStartDisabled": "已关闭开机自启动",
+      "transcriptionLanguage": "转录语言",
+      "transcriptionLanguageDescription": "语音转文字时使用的识别语言",
+      "transcriptionLanguageUpdated": "转录语言已更新",
+      "autoDetect": "自动检测"
     }
   },
   "dashboard": {

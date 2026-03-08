@@ -7,7 +7,6 @@ use super::audio_recorder::AudioRecorderState;
 // ========== Constants ==========
 
 const GROQ_API_URL: &str = "https://api.groq.com/openai/v1/audio/transcriptions";
-const TRANSCRIPTION_LANGUAGE: &str = "zh";
 const MAX_WHISPER_PROMPT_TERMS: usize = 50;
 const MINIMUM_AUDIO_SIZE: usize = 1000;
 const DEFAULT_WHISPER_MODEL_ID: &str = "whisper-large-v3";
@@ -139,8 +138,12 @@ pub async fn transcribe_audio(
     let mut form = reqwest::multipart::Form::new()
         .part("file", file_part)
         .text("model", model)
-        .text("language", language.unwrap_or_else(|| TRANSCRIPTION_LANGUAGE.to_string()))
         .text("response_format", "verbose_json");
+
+    // Conditionally add language — None means auto-detect
+    if let Some(lang) = language {
+        form = form.text("language", lang);
+    }
 
     if let Some(ref terms) = vocabulary_term_list {
         if !terms.is_empty() {

@@ -21,7 +21,12 @@ import {
   type LlmModelId,
   type WhisperModelId,
 } from "../lib/modelRegistry";
-import { LANGUAGE_OPTIONS, type SupportedLocale } from "../i18n/languageConfig";
+import {
+  LANGUAGE_OPTIONS,
+  TRANSCRIPTION_LANGUAGE_OPTIONS,
+  type SupportedLocale,
+  type TranscriptionLocale,
+} from "../i18n/languageConfig";
 
 import {
   Card,
@@ -425,6 +430,18 @@ async function handleLocaleChange(newLocale: SupportedLocale) {
   }
 }
 
+// ── 轉錄語言 ──────────────────────────────────────────────
+const transcriptionLocaleFeedback = useFeedbackMessage();
+
+async function handleTranscriptionLocaleChange(newLocale: TranscriptionLocale) {
+  try {
+    await settingsStore.saveTranscriptionLocale(newLocale);
+    transcriptionLocaleFeedback.show("success", t("settings.app.transcriptionLanguageUpdated"));
+  } catch (err) {
+    transcriptionLocaleFeedback.show("error", extractErrorMessage(err));
+  }
+}
+
 // ── 應用程式 ────────────────────────────────────────────────
 const autoStartFeedback = useFeedbackMessage();
 const isTogglingAutoStart = ref(false);
@@ -469,6 +486,7 @@ onBeforeUnmount(() => {
   modelFeedback.clearTimer();
   muteOnRecordingFeedback.clearTimer();
   localeFeedback.clearTimer();
+  transcriptionLocaleFeedback.clearTimer();
   autoStartFeedback.clearTimer();
   clearTimeout(deleteConfirmTimeoutId);
   clearTimeout(resetPromptConfirmTimeoutId);
@@ -980,6 +998,45 @@ onBeforeUnmount(() => {
             "
           >
             {{ localeFeedback.message.value }}
+          </p>
+        </transition>
+
+        <!-- 轉錄語言 -->
+        <div class="flex items-center justify-between">
+          <div>
+            <Label for="transcription-locale-select">{{ $t("settings.app.transcriptionLanguage") }}</Label>
+            <p class="text-sm text-muted-foreground">{{ $t("settings.app.transcriptionLanguageDescription") }}</p>
+          </div>
+          <Select
+            :model-value="settingsStore.selectedTranscriptionLocale"
+            @update:model-value="handleTranscriptionLocaleChange($event as TranscriptionLocale)"
+          >
+            <SelectTrigger id="transcription-locale-select" class="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem
+                v-for="opt in TRANSCRIPTION_LANGUAGE_OPTIONS"
+                :key="opt.locale"
+                :value="opt.locale"
+              >
+                {{ opt.locale === 'auto' ? $t('settings.app.autoDetect') : opt.displayName }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <transition name="feedback-fade">
+          <p
+            v-if="transcriptionLocaleFeedback.message.value !== ''"
+            class="text-sm"
+            :class="
+              transcriptionLocaleFeedback.type.value === 'success'
+                ? 'text-green-400'
+                : 'text-red-400'
+            "
+          >
+            {{ transcriptionLocaleFeedback.message.value }}
           </p>
         </transition>
 

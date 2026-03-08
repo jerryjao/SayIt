@@ -102,3 +102,31 @@ export function getWhisperCodeForLocale(locale: SupportedLocale): string {
   const option = LANGUAGE_OPTIONS.find((o) => o.locale === locale);
   return option?.whisperCode ?? "zh";
 }
+
+export type TranscriptionLocale = SupportedLocale | "auto";
+
+export interface TranscriptionLanguageOption {
+  locale: TranscriptionLocale;
+  displayName: string;
+  whisperCode: string | null;
+}
+
+export const TRANSCRIPTION_LANGUAGE_OPTIONS: TranscriptionLanguageOption[] = [
+  {
+    locale: "auto",
+    displayName: "自動偵測",
+    whisperCode: null,
+  },
+  ...LANGUAGE_OPTIONS.map((opt) => ({
+    locale: opt.locale as TranscriptionLocale,
+    displayName: opt.displayName,
+    whisperCode: opt.whisperCode,
+  })),
+];
+
+export function getWhisperCodeForTranscriptionLocale(
+  locale: TranscriptionLocale,
+): string | null {
+  if (locale === "auto") return null;
+  return getWhisperCodeForLocale(locale);
+}
