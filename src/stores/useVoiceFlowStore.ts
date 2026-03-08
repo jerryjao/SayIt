@@ -47,6 +47,7 @@ import { useSettingsStore } from "./useSettingsStore";
 const SUCCESS_DISPLAY_DURATION_MS = 1000;
 const ERROR_DISPLAY_DURATION_MS = 3000;
 const NO_SPEECH_PROBABILITY_THRESHOLD = 0.9;
+const START_SOUND_DURATION_MS = 400;
 
 const WHISPER_HALLUCINATION_PHRASES = new Set([
   "谢谢大家",
@@ -132,6 +133,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   const COLLAPSE_HIDE_DELAY_MS = 400;
   const lastWasModified = ref<boolean | null>(null);
   let monitorPollTimer: ReturnType<typeof setInterval> | null = null;
+  let delayedMuteTimer: ReturnType<typeof setTimeout> | null = null;
   let lastMonitorKey = "";
   let isRepositioning = false;
 
@@ -237,6 +239,13 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     await getAppWindow().hide();
   }
 
+  function clearDelayedMuteTimer() {
+    if (delayedMuteTimer) {
+      clearTimeout(delayedMuteTimer);
+      delayedMuteTimer = null;
+    }
+  }
+
   async function muteSystemAudioIfEnabled() {
     const settingsStore = useSettingsStore();
     if (!settingsStore.isMuteOnRecordingEnabled) return;
@@ -249,12 +258,14 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     }
   }
 
-  function restoreSystemAudio() {
-    void invoke("restore_system_audio").catch((err) =>
+  async function restoreSystemAudio() {
+    try {
+      await invoke("restore_system_audio");
+    } catch (err) {
       writeErrorLog(
         `useVoiceFlowStore: restore_system_audio failed: ${extractErrorMessage(err)}`,
-      ),
-    );
+      );
+    }
   }
 
   function startQualityMonitorAfterPaste() {
@@ -369,6 +380,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     logMessage: string,
     error?: unknown,
   ) {
+    clearDelayedMuteTimer();
     restoreSystemAudio();
     isRecording.value = false;
     transitionTo("error", errorMessage);
@@ -464,10 +476,12 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     lastWasModified.value = null;
 
     try {
-      await Promise.all([
-        muteSystemAudioIfEnabled(),
-        invoke("start_recording"),
-      ]);
+      void invoke("play_start_sound").catch(() => {});
+      delayedMuteTimer = setTimeout(() => {
+        delayedMuteTimer = null;
+        void muteSystemAudioIfEnabled();
+      }, START_SOUND_DURATION_MS);
+      await invoke("start_recording");
       startElapsedTimer();
       transitionTo("recording", t("voiceFlow.recording"));
       writeInfoLog("useVoiceFlowStore: recording started");
@@ -485,7 +499,9 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   async function handleStopRecording() {
     if (!isRecording.value) return;
 
-    restoreSystemAudio();
+    clearDelayedMuteTimer();
+    await restoreSystemAudio();
+    void invoke("play_stop_sound").catch(() => {});
     stopElapsedTimer();
 
     try {
@@ -707,6 +723,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   function cleanup() {
     clearAutoHideTimer();
     clearCollapseHideTimer();
+    clearDelayedMuteTimer();
     stopMonitorPolling();
     stopElapsedTimer();
 

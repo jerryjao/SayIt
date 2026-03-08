@@ -412,7 +412,9 @@ pub fn run() {
             plugins::keyboard_monitor::start_quality_monitor,
             plugins::audio_recorder::start_recording,
             plugins::audio_recorder::stop_recording,
-            plugins::transcription::transcribe_audio
+            plugins::transcription::transcribe_audio,
+            plugins::sound_feedback::play_start_sound,
+            plugins::sound_feedback::play_stop_sound
         ])
         .setup(|app| {
             // 初始化 keyboard monitor 狀態

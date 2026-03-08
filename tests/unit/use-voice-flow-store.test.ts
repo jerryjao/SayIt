@@ -1762,4 +1762,74 @@ describe("useVoiceFlowStore", () => {
       expect(whisperRecord.apiType).toBe("whisper");
     });
   });
+
+  describe("音效回饋", () => {
+    it("開始錄音時應呼叫 play_start_sound", async () => {
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      triggerHotkeyEvent("hotkey:pressed");
+      await vi.waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("start_recording");
+      });
+      expect(mockInvoke).toHaveBeenCalledWith("play_start_sound");
+    });
+
+    it("結束錄音時應呼叫 play_stop_sound", async () => {
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      triggerHotkeyEvent("hotkey:pressed");
+      await vi.waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("start_recording");
+      });
+
+      triggerHotkeyEvent("hotkey:released");
+      await vi.waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("play_stop_sound");
+      });
+    });
+
+    it("play_start_sound 失敗不應影響錄音流程", async () => {
+      mockInvoke.mockImplementation(async (cmd: string) => {
+        if (cmd === "play_start_sound")
+          throw new Error("sound playback failed");
+        return createMockInvokeHandler()(cmd);
+      });
+
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      triggerHotkeyEvent("hotkey:pressed");
+      await vi.waitFor(() => {
+        expect(store.status).toBe("recording");
+      });
+
+      expect(mockInvoke).toHaveBeenCalledWith("start_recording");
+    });
+
+    it("play_stop_sound 失敗不應影響轉錄流程", async () => {
+      mockInvoke.mockImplementation(async (cmd: string) => {
+        if (cmd === "play_stop_sound") throw new Error("sound playback failed");
+        return createMockInvokeHandler()(cmd);
+      });
+
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      triggerHotkeyEvent("hotkey:pressed");
+      await vi.waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("start_recording");
+      });
+
+      triggerHotkeyEvent("hotkey:released");
+      await vi.waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("paste_text", {
+          text: "測試轉錄",
+        });
+      });
+
+      expect(store.status).toBe("success");
+    });
+  });
 });
