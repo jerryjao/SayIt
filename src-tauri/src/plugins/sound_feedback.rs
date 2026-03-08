@@ -63,7 +63,7 @@ mod macos {
 #[cfg(target_os = "windows")]
 mod windows_sound {
     use windows::core::PCSTR;
-    use windows::Win32::Media::{PlaySoundA, SND_ASYNC, SND_MEMORY};
+    use windows::Win32::Media::Audio::{PlaySoundA, SND_ASYNC, SND_MEMORY};
 
     static START_SOUND: &[u8] = include_bytes!("../../resources/sounds/start.wav");
     static STOP_SOUND: &[u8] = include_bytes!("../../resources/sounds/stop.wav");
