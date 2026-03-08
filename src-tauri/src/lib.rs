@@ -4,12 +4,17 @@ extern crate objc;
 
 mod plugins;
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{
     command,
     menu::{Menu, MenuItem},
     tray::TrayIconBuilder,
-    AppHandle, Manager,
+    AppHandle, Manager, Runtime,
 };
+
+/// App 重啟旗標：由 `request_app_restart` command 設定，
+/// `RunEvent::Exit` handler 在 `_exit(0)` 前檢查並 spawn 新 process。
+static RESTART_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 /// 設定 macOS 視窗為瀏海覆蓋層級（與 BoringNotch 相同）
 #[cfg(target_os = "macos")]
@@ -73,6 +78,13 @@ fn configure_windows_topmost_window(window: &tauri::WebviewWindow) {
             eprintln!("[windows] Failed to get HWND: {}", e);
         }
     }
+}
+
+#[command]
+fn request_app_restart<R: Runtime>(app: AppHandle<R>) {
+    println!("[app] Restart requested via command");
+    RESTART_REQUESTED.store(true, Ordering::SeqCst);
+    app.exit(0);
 }
 
 #[command]
@@ -400,6 +412,7 @@ pub fn run() {
         .plugin(plugins::hotkey_listener::init())
         .invoke_handler(tauri::generate_handler![
             debug_log,
+            request_app_restart,
             update_hotkey_config,
             get_hud_target_position,
             plugins::audio_control::mute_system_audio,
@@ -513,6 +526,21 @@ pub fn run() {
                     // 6. Flush Sentry 事件佇列（確保 shutdown 前的事件送出）
                     if let Some(client) = sentry::Hub::current().client() {
                         client.flush(Some(std::time::Duration::from_secs(2)));
+                    }
+
+                    // 7. 如果是 restart 請求，在 _exit(0) 前自行 spawn 新 process
+                    //    （因為 _exit(0) 會截殺 Tauri 內建的 restart 邏輯）
+                    if RESTART_REQUESTED.load(Ordering::SeqCst) {
+                        match std::env::current_exe() {
+                            Ok(exe_path) => {
+                                println!("[app] Spawning new process for restart: {:?}", exe_path);
+                                match std::process::Command::new(&exe_path).spawn() {
+                                    Ok(_) => println!("[app] New process spawned successfully"),
+                                    Err(e) => eprintln!("[app] Failed to spawn new process: {}", e),
+                                }
+                            }
+                            Err(e) => eprintln!("[app] Failed to get current exe path: {}", e),
+                        }
                     }
 
                     println!("[app] Graceful shutdown complete");

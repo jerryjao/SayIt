@@ -1,21 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 const mockCheck = vi.fn();
-const mockRelaunch = vi.fn();
+const mockInvoke = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@tauri-apps/plugin-updater", () => ({
   check: mockCheck,
 }));
 
-vi.mock("@tauri-apps/plugin-process", () => ({
-  relaunch: mockRelaunch,
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: mockInvoke,
 }));
 
 describe("autoUpdater.ts", () => {
   beforeEach(() => {
     vi.resetModules();
     mockCheck.mockReset();
-    mockRelaunch.mockReset();
+    mockInvoke.mockReset().mockResolvedValue(undefined);
     vi.spyOn(console, "log").mockImplementation(() => {});
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
@@ -79,7 +79,7 @@ describe("autoUpdater.ts", () => {
 
     expect(mockDownload).toHaveBeenCalledOnce();
     expect(mockInstall).not.toHaveBeenCalled();
-    expect(mockRelaunch).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 
   it("[P0] installAndRelaunch 應安裝並重啟", async () => {
@@ -98,7 +98,7 @@ describe("autoUpdater.ts", () => {
     await installAndRelaunch();
 
     expect(mockInstall).toHaveBeenCalledOnce();
-    expect(mockRelaunch).toHaveBeenCalledOnce();
+    expect(mockInvoke).toHaveBeenCalledWith("request_app_restart");
   });
 
   it("[P0] downloadInstallAndRelaunch 應一鍵完成", async () => {
@@ -118,7 +118,7 @@ describe("autoUpdater.ts", () => {
 
     expect(mockDownload).toHaveBeenCalledOnce();
     expect(mockInstall).toHaveBeenCalledOnce();
-    expect(mockRelaunch).toHaveBeenCalledOnce();
+    expect(mockInvoke).toHaveBeenCalledWith("request_app_restart");
   });
 
   it("[P0] 無暫存更新時 downloadUpdate 應拋錯", async () => {
@@ -148,6 +148,6 @@ describe("autoUpdater.ts", () => {
     await checkForAppUpdate();
 
     await expect(downloadUpdate()).rejects.toThrow("Download failed");
-    expect(mockRelaunch).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 });

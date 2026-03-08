@@ -1,5 +1,5 @@
 import { check, type Update } from "@tauri-apps/plugin-updater";
-import { relaunch } from "@tauri-apps/plugin-process";
+import { invoke } from "@tauri-apps/api/core";
 
 export interface UpdateCheckResult {
   status: "up-to-date" | "update-available" | "error";
@@ -57,7 +57,7 @@ export async function installAndRelaunch(): Promise<void> {
 
   console.log("[autoUpdater] Installing update...");
   await pendingUpdate.install();
-  await relaunch();
+  await invoke("request_app_restart");
 }
 
 /**
@@ -72,5 +72,5 @@ export async function downloadInstallAndRelaunch(): Promise<void> {
   await pendingUpdate.download();
   console.log("[autoUpdater] Download complete, installing...");
   await pendingUpdate.install();
-  await relaunch();
+  await invoke("request_app_restart");
 }
