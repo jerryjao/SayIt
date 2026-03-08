@@ -23,6 +23,14 @@ fi
 CURRENT=$(jq -r .version src-tauri/tauri.conf.json)
 echo "版本更新: $CURRENT → $VERSION"
 
+# 確認 CHANGELOG.md 已更新
+if ! grep -q "## \[$VERSION\]" CHANGELOG.md; then
+  echo "錯誤: CHANGELOG.md 缺少 v$VERSION 的紀錄"
+  echo "請先新增 '## [$VERSION]' 區塊再執行發版"
+  exit 1
+fi
+echo "✓ CHANGELOG.md 已包含 v$VERSION 紀錄"
+
 # 確認 working tree 乾淨
 if [ -n "$(git status --porcelain)" ]; then
   echo "錯誤: 有未 commit 的變更，請先處理"
