@@ -50,6 +50,7 @@ const STORE_NAME = "settings.json";
 export const DEFAULT_ENHANCEMENT_THRESHOLD_ENABLED = false;
 export const DEFAULT_ENHANCEMENT_THRESHOLD_CHAR_COUNT = 10;
 export const DEFAULT_MUTE_ON_RECORDING = true;
+const DEFAULT_SMART_DICTIONARY_ENABLED = navigator.userAgent.includes("Mac"); // macOS only — Windows 尚未支援 text field 讀取
 
 function getDefaultTriggerKey(): TriggerKey {
   const isMac = navigator.userAgent.includes("Mac");
@@ -87,6 +88,9 @@ export const useSettingsStore = defineStore("settings", () => {
   const selectedWhisperModelId = ref<WhisperModelId>(DEFAULT_WHISPER_MODEL_ID);
   const customTriggerKey = ref<CustomTriggerKey | null>(null);
   const isMuteOnRecordingEnabled = ref<boolean>(DEFAULT_MUTE_ON_RECORDING);
+  const isSmartDictionaryEnabled = ref<boolean>(
+    DEFAULT_SMART_DICTIONARY_ENABLED,
+  );
   const customTriggerKeyDomCode = ref<string>("");
   const selectedLocale = ref<SupportedLocale>(FALLBACK_LOCALE);
   const selectedTranscriptionLocale = ref<TranscriptionLocale>(FALLBACK_LOCALE);
@@ -202,6 +206,12 @@ export const useSettingsStore = defineStore("settings", () => {
       const savedMuteOnRecording = await store.get<boolean>("muteOnRecording");
       isMuteOnRecordingEnabled.value =
         savedMuteOnRecording ?? DEFAULT_MUTE_ON_RECORDING;
+
+      const savedSmartDictionary = await store.get<boolean>(
+        "smartDictionaryEnabled",
+      );
+      isSmartDictionaryEnabled.value =
+        savedSmartDictionary ?? DEFAULT_SMART_DICTIONARY_ENABLED;
 
       // Sync saved (or default) config to Rust on startup
       await syncHotkeyConfigToRust(key, mode);
@@ -650,6 +660,34 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  async function saveSmartDictionaryEnabled(enabled: boolean) {
+    try {
+      const store = await load(STORE_NAME);
+      await store.set("smartDictionaryEnabled", enabled);
+      await store.save();
+      isSmartDictionaryEnabled.value = enabled;
+
+      const payload: SettingsUpdatedPayload = {
+        key: "smartDictionaryEnabled",
+        value: enabled,
+      };
+      await emitEvent(SETTINGS_UPDATED, payload);
+      console.log(
+        `[useSettingsStore] smartDictionaryEnabled saved: ${enabled}`,
+      );
+    } catch (err) {
+      console.error(
+        "[useSettingsStore] saveSmartDictionaryEnabled failed:",
+        extractErrorMessage(err),
+      );
+      captureError(err, {
+        source: "settings",
+        step: "save-smart-dictionary",
+      });
+      throw err;
+    }
+  }
+
   async function refreshCrossWindowSettings() {
     try {
       const store = await load(STORE_NAME);
@@ -671,6 +709,9 @@ export const useSettingsStore = defineStore("settings", () => {
       const savedLlmModelId = await store.get<string>("llmModelId");
       const savedWhisperModelId = await store.get<string>("whisperModelId");
       const savedMuteOnRecording = await store.get<boolean>("muteOnRecording");
+      const savedSmartDictionary = await store.get<boolean>(
+        "smartDictionaryEnabled",
+      );
 
       hotkeyConfig.value = {
         triggerKey: savedKey ?? getDefaultTriggerKey(),
@@ -714,6 +755,8 @@ export const useSettingsStore = defineStore("settings", () => {
       );
       isMuteOnRecordingEnabled.value =
         savedMuteOnRecording ?? DEFAULT_MUTE_ON_RECORDING;
+      isSmartDictionaryEnabled.value =
+        savedSmartDictionary ?? DEFAULT_SMART_DICTIONARY_ENABLED;
     } catch (err) {
       console.error(
         "[useSettingsStore] refreshCrossWindowSettings failed:",
@@ -784,6 +827,8 @@ export const useSettingsStore = defineStore("settings", () => {
     saveWhisperModel,
     isMuteOnRecordingEnabled,
     saveMuteOnRecording,
+    isSmartDictionaryEnabled,
+    saveSmartDictionaryEnabled,
     selectedLocale,
     saveLocale,
     selectedTranscriptionLocale,

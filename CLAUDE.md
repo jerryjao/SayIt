@@ -53,6 +53,8 @@
 | `open_accessibility_settings` | `plugins/hotkey_listener.rs` | AccessibilityGuide.vue | — | `Result<(), String>` |
 | `reinitialize_hotkey_listener` | `plugins/hotkey_listener.rs` | AccessibilityGuide.vue | `app: AppHandle` | `Result<(), String>` |
 | `start_quality_monitor` | `plugins/keyboard_monitor.rs` | useVoiceFlowStore | `app: AppHandle` | `()` |
+| `start_correction_monitor` | `plugins/keyboard_monitor.rs` | useVoiceFlowStore | `app: AppHandle` | `()` |
+| `read_focused_text_field` | `plugins/text_field_reader.rs` | useVoiceFlowStore | — | `Result<Option<String>, String>` |
 | `mute_system_audio` | `plugins/audio_control.rs` | useVoiceFlowStore | `state: State<AudioControlState>` | `Result<(), String>` |
 | `restore_system_audio` | `plugins/audio_control.rs` | useVoiceFlowStore | `state: State<AudioControlState>` | `Result<(), String>` |
 | `start_recording` | `plugins/audio_recorder.rs` | useVoiceFlowStore | `app: AppHandle, state: State<AudioRecorderState>` | `Result<(), AudioRecorderError>` |
@@ -60,6 +62,7 @@
 | `transcribe_audio` | `plugins/transcription.rs` | useVoiceFlowStore | `state: State<AudioRecorderState>, transcription_state: State<TranscriptionState>, api_key: String, vocabulary_term_list: Option<Vec<String>>, model_id: Option<String>, language: Option<String>` | `Result<TranscriptionResult, TranscriptionError>` |
 | `play_start_sound` | `plugins/sound_feedback.rs` | useVoiceFlowStore | — | `()` |
 | `play_stop_sound` | `plugins/sound_feedback.rs` | useVoiceFlowStore | — | `()` |
+| `play_learned_sound` | `plugins/sound_feedback.rs` | NotchHud.vue | — | `()` |
 
 ### Rust → Frontend Events
 
@@ -70,6 +73,7 @@
 | `hotkey:toggled` | hotkey_listener.rs | `HOTKEY_TOGGLED` | `HotkeyEventPayload` |
 | `hotkey:error` | hotkey_listener.rs | `HOTKEY_ERROR` | `HotkeyErrorPayload` |
 | `quality-monitor:result` | keyboard_monitor.rs | `QUALITY_MONITOR_RESULT` | `QualityMonitorResultPayload` |
+| `correction-monitor:result` | keyboard_monitor.rs | `CORRECTION_MONITOR_RESULT` | `CorrectionMonitorResultPayload` |
 | `audio:waveform` | audio_recorder.rs | `AUDIO_WAVEFORM` | `WaveformPayload { levels: [f32; 6] }` |
 
 ### Frontend-only Events（不經 Rust）
@@ -80,6 +84,7 @@
 | `transcription:completed` | `TRANSCRIPTION_COMPLETED` | VoiceFlow | Main Window |
 | `settings:updated` | `SETTINGS_UPDATED` | SettingsStore | All Windows |
 | `vocabulary:changed` | `VOCABULARY_CHANGED` | VocabularyStore | All Windows |
+| `vocabulary:learned` | `VOCABULARY_LEARNED` | VoiceFlowStore | HUD NotchHud |
 
 ## 自動更新機制
 

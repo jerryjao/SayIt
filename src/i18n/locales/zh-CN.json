@@ -102,6 +102,11 @@
       "transcriptionLanguageDescription": "语音转文字时使用的识别语言",
       "transcriptionLanguageUpdated": "转录语言已更新",
       "autoDetect": "自动检测"
+    },
+    "smartDictionary": {
+      "title": "智能字典学习",
+      "description": "转录粘贴后自动检测修正，通过 AI 分析学习新词汇",
+      "privacyNote": "启用后，系统会读取光标附近的文字用于 AI 分析，不存储原文"
     }
   },
   "dashboard": {
@@ -125,7 +130,9 @@
     "quotaWhisperRequests": "Whisper {used}/{limit} 次",
     "quotaAudio": "音频 {used}/{limit}",
     "quotaLlmRequests": "LLM {used}/{limit} 次",
-    "quotaLlmTokens": "LLM {used}/{limit} tokens"
+    "quotaLlmTokens": "LLM {used}/{limit} tokens",
+    "vocabularyAnalysis": "字典分析",
+    "vocabularyAnalysisUsage": "字典分析：{requests} 次 / {tokens} tokens"
   },
   "history": {
     "searchPlaceholder": "搜索转录记录...",
@@ -158,7 +165,14 @@
     "termHeader": "词汇",
     "dateHeader": "新增时间",
     "actionHeader": "操作",
-    "loadFailed": "加载词汇清单失败"
+    "loadFailed": "加载词汇清单失败",
+    "aiRecommended": "AI 推荐",
+    "manualAdded": "手动添加",
+    "weight": "权重",
+    "description": "字典词汇会在语音识别时提供给 AI，提升专有名词与术语的识别准确度。",
+    "weightDescription": "每次语音识别时，系统会将权重最高的前 {limit} 个词汇加入 AI 识别提示。当 AI 检测到你重复修正同一个词时，该词的权重会自动提升。",
+    "noAiSuggestions": "暂无 AI 推荐词汇，启用智能字典学习后系统会自动学习",
+    "aiTermCount": "{count} 个词"
   },
   "accessibility": {
     "title": "需要辅助使用权限",
@@ -179,7 +193,10 @@
     "pasteSuccessUnenhanced": "已粘贴（未整理）",
     "enhancing": "整理中...",
     "pasteFailed": "粘贴失败",
-    "recordingTooShort": "录音时间太短"
+    "recordingTooShort": "录音时间太短",
+    "vocabularyLearnedLabel": "新增字典",
+    "vocabularyLearned": "{terms}",
+    "vocabularyLearnedTruncated": "{terms} 等 {count} 个"
   },
   "errors": {
     "apiKeyEmpty": "API Key 不可为空",

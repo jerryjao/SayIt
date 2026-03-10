@@ -296,6 +296,8 @@ export const useHistoryStore = defineStore("history", () => {
       whisperBilledAudioMs: 0,
       llmRequestCount: 0,
       llmTotalTokens: 0,
+      vocabularyAnalysisRequestCount: 0,
+      vocabularyAnalysisTotalTokens: 0,
     },
   });
   const recentTranscriptionList = ref<TranscriptionRecord[]>([]);
@@ -351,6 +353,8 @@ export const useHistoryStore = defineStore("history", () => {
       whisperBilledAudioMs: 0,
       llmRequestCount: 0,
       llmTotalTokens: 0,
+      vocabularyAnalysisRequestCount: 0,
+      vocabularyAnalysisTotalTokens: 0,
     };
 
     for (const row of rows) {
@@ -360,6 +364,9 @@ export const useHistoryStore = defineStore("history", () => {
       } else if (row.api_type === "chat") {
         result.llmRequestCount = row.request_count;
         result.llmTotalTokens = row.total_tokens;
+      } else if (row.api_type === "vocabulary_analysis") {
+        result.vocabularyAnalysisRequestCount = row.request_count;
+        result.vocabularyAnalysisTotalTokens = row.total_tokens;
       }
     }
 

@@ -13,6 +13,7 @@ import {
 } from "../lib/errorUtils";
 import { captureError } from "../lib/sentry";
 import { enhanceText } from "../lib/enhancer";
+import { analyzeCorrections } from "../lib/vocabularyAnalyzer";
 import i18n from "../i18n";
 import { useVocabularyStore } from "./useVocabularyStore";
 import { useHistoryStore } from "./useHistoryStore";
@@ -33,12 +34,17 @@ import {
   HOTKEY_TOGGLED,
   QUALITY_MONITOR_RESULT,
   VOICE_FLOW_STATE_CHANGED,
+  CORRECTION_MONITOR_RESULT,
+  VOCABULARY_LEARNED,
+  emitEvent,
 } from "../composables/useTauriEvents";
 import {
   HOTKEY_ERROR_CODES,
   type HotkeyErrorPayload,
   type HotkeyEventPayload,
   type QualityMonitorResultPayload,
+  type CorrectionMonitorResultPayload,
+  type VocabularyLearnedPayload,
 } from "../types/events";
 import type { HudStatus, HudTargetPosition } from "../types";
 import type { VoiceFlowStateChangedPayload } from "../types/events";
@@ -137,6 +143,8 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   const lastWasModified = ref<boolean | null>(null);
   let monitorPollTimer: ReturnType<typeof setInterval> | null = null;
   let delayedMuteTimer: ReturnType<typeof setTimeout> | null = null;
+  let learnedHideTimer: ReturnType<typeof setTimeout> | null = null;
+  const LEARNED_NOTIFICATION_TOTAL_DURATION_MS = 2800; // 2000 display + 400 collapse + 400 buffer
   let lastMonitorKey = "";
   let isRepositioning = false;
 
@@ -230,6 +238,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   }
 
   async function showHud() {
+    clearLearnedHideTimer();
     const window = getAppWindow();
     lastMonitorKey = "";
     await repositionHudToCurrentMonitor();
@@ -246,6 +255,13 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     if (delayedMuteTimer) {
       clearTimeout(delayedMuteTimer);
       delayedMuteTimer = null;
+    }
+  }
+
+  function clearLearnedHideTimer() {
+    if (learnedHideTimer) {
+      clearTimeout(learnedHideTimer);
+      learnedHideTimer = null;
     }
   }
 
@@ -282,14 +298,18 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     });
   }
 
-  function saveTranscriptionRecord(record: TranscriptionRecord) {
+  async function saveTranscriptionRecord(
+    record: TranscriptionRecord,
+  ): Promise<void> {
     const historyStore = useHistoryStore();
-    void historyStore.addTranscription(record).catch((err) => {
+    try {
+      await historyStore.addTranscription(record);
+    } catch (err) {
       writeErrorLog(
         `useVoiceFlowStore: addTranscription failed: ${extractErrorMessage(err)}`,
       );
       captureError(err, { source: "voice-flow", step: "save-transcription" });
-    });
+    }
   }
 
   function buildTranscriptionRecord(params: {
@@ -402,6 +422,315 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     }
   }
 
+  function escapeRegex(str: string): string {
+    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  }
+
+  function updateVocabularyWeightsAfterPaste(finalText: string) {
+    void (async () => {
+      try {
+        const vocabularyStore = useVocabularyStore();
+        const matchedIdList: string[] = [];
+
+        for (const entry of vocabularyStore.termList) {
+          const isEnglish = /^[a-zA-Z]/.test(entry.term);
+          if (isEnglish) {
+            const regex = new RegExp(
+              "\\b" + escapeRegex(entry.term) + "\\b",
+              "i",
+            );
+            if (regex.test(finalText)) {
+              matchedIdList.push(entry.id);
+            }
+          } else {
+            if (finalText.includes(entry.term)) {
+              matchedIdList.push(entry.id);
+            }
+          }
+        }
+
+        if (matchedIdList.length > 0) {
+          await vocabularyStore.batchIncrementWeights(matchedIdList);
+          writeInfoLog(
+            `useVoiceFlowStore: vocabulary weights updated for ${matchedIdList.length} terms`,
+          );
+        }
+      } catch (err) {
+        writeErrorLog(
+          `useVoiceFlowStore: vocabulary weight update failed: ${extractErrorMessage(err)}`,
+        );
+        captureError(err, {
+          source: "voice-flow",
+          step: "vocabulary-weight-update",
+        });
+      }
+    })();
+  }
+
+  const SNAPSHOT_POLL_INTERVAL_MS = 500;
+  let correctionSnapshotTimer: ReturnType<typeof setInterval> | null = null;
+  let correctionMonitorUnlisten: UnlistenFn | null = null;
+
+  function stopCorrectionSnapshotPolling() {
+    if (correctionSnapshotTimer) {
+      clearInterval(correctionSnapshotTimer);
+      correctionSnapshotTimer = null;
+    }
+  }
+
+  function cleanupCorrectionMonitorListener() {
+    if (correctionMonitorUnlisten) {
+      correctionMonitorUnlisten();
+      correctionMonitorUnlisten = null;
+    }
+  }
+
+  function startCorrectionDetectionFlow(
+    pastedText: string,
+    transcriptionId: string,
+    apiKey: string,
+  ) {
+    void (async () => {
+      try {
+        const settingsStore = useSettingsStore();
+        if (!settingsStore.isSmartDictionaryEnabled) return;
+
+        // 清除前一次的 listener，避免重複累積
+        cleanupCorrectionMonitorListener();
+
+        // 啟動修正監控
+        await invoke("start_correction_monitor");
+
+        // Phase 2 snapshot polling
+        let latestSnapshot: string | null = null;
+        stopCorrectionSnapshotPolling();
+
+        correctionSnapshotTimer = setInterval(() => {
+          void (async () => {
+            try {
+              const text = await invoke<string | null>(
+                "read_focused_text_field",
+              );
+              if (text) {
+                latestSnapshot = text;
+              }
+            } catch {
+              // AX 讀取失敗靜默處理
+            }
+          })();
+        }, SNAPSHOT_POLL_INTERVAL_MS);
+
+        // 一次性監聽 correction-monitor:result
+        correctionMonitorUnlisten =
+          await listen<CorrectionMonitorResultPayload>(
+            CORRECTION_MONITOR_RESULT,
+            (event) => {
+              cleanupCorrectionMonitorListener();
+              stopCorrectionSnapshotPolling();
+
+              void (async () => {
+                try {
+                  const result = event.payload;
+
+                  if (!result.anyKeyPressed) {
+                    writeInfoLog(
+                      "[correction] no key pressed — skipping analysis",
+                    );
+                    return;
+                  }
+
+                  writeInfoLog(
+                    `[correction] keys detected (enter=${result.enterPressed}) — reading field text`,
+                  );
+
+                  let fieldText: string | null = null;
+
+                  if (result.enterPressed) {
+                    // Enter 觸發：先嘗試即時讀取（IME 確認後文字可能已更新）
+                    // 讀不到（如 LINE 按 Enter 送出後已清空）才 fallback 到 snapshot
+                    try {
+                      const freshText = await invoke<string | null>(
+                        "read_focused_text_field",
+                      );
+                      if (freshText && freshText.trim()) {
+                        fieldText = freshText;
+                      } else {
+                        fieldText = latestSnapshot;
+                      }
+                    } catch {
+                      fieldText = latestSnapshot;
+                    }
+                  } else {
+                    // Idle timeout 或硬上限：做最後一次讀取
+                    try {
+                      fieldText = await invoke<string | null>(
+                        "read_focused_text_field",
+                      );
+                    } catch {
+                      // fallback to snapshot
+                      fieldText = latestSnapshot;
+                    }
+                  }
+
+                  if (!fieldText || !fieldText.trim()) {
+                    writeInfoLog(
+                      "[correction] field text is null or empty — skipping analysis",
+                    );
+                    return;
+                  }
+                  if (fieldText.includes(pastedText)) {
+                    writeInfoLog(
+                      "[correction] text unchanged — skipping analysis",
+                    );
+                    return;
+                  }
+
+                  // 相似度檢查：如果 corrected 跟 original 完全無關（AX 讀到錯的東西），跳過
+                  const overlapCharCount = [...pastedText].filter((ch) =>
+                    fieldText.includes(ch),
+                  ).length;
+                  const overlapRatio = overlapCharCount / pastedText.length;
+                  if (overlapRatio < 0.3) {
+                    writeInfoLog(
+                      `[correction] field text unrelated to original (overlap=${Math.round(overlapRatio * 100)}%) — skipping analysis`,
+                    );
+                    return;
+                  }
+
+                  writeInfoLog(
+                    `[correction] text modified (overlap=${Math.round(overlapRatio * 100)}%) — sending to AI analysis\n  original:  ${pastedText.slice(0, 80)}\n  corrected: ${fieldText.slice(0, 80)}`,
+                  );
+
+                  const analysisResult = await analyzeCorrections(
+                    pastedText,
+                    fieldText,
+                    apiKey,
+                    { modelId: settingsStore.selectedLlmModelId },
+                  );
+
+                  writeInfoLog(
+                    `[correction] AI raw: ${analysisResult.rawResponse}`,
+                  );
+                  writeInfoLog(
+                    `[correction] AI result: ${JSON.stringify(analysisResult.suggestedTermList)} (tokens: ${analysisResult.usage?.totalTokens ?? "??"})`,
+                  );
+
+                  if (analysisResult.suggestedTermList.length === 0) return;
+
+                  const vocabularyStore = useVocabularyStore();
+                  const newTermList: string[] = [];
+
+                  for (const term of analysisResult.suggestedTermList) {
+                    if (vocabularyStore.isDuplicateTerm(term)) {
+                      // 已存在的詞 weight +1
+                      const existingEntry = vocabularyStore.termList.find(
+                        (e) =>
+                          e.term.trim().toLowerCase() ===
+                          term.trim().toLowerCase(),
+                      );
+                      if (existingEntry) {
+                        void vocabularyStore
+                          .batchIncrementWeights([existingEntry.id])
+                          .catch((err) =>
+                            writeErrorLog(
+                              `useVoiceFlowStore: batchIncrementWeights failed: ${extractErrorMessage(err)}`,
+                            ),
+                          );
+                      }
+                    } else {
+                      await vocabularyStore.addAiSuggestedTerm(term);
+                      newTermList.push(term);
+                    }
+                  }
+
+                  // 記錄 API 用量
+                  if (analysisResult.usage) {
+                    const historyStore = useHistoryStore();
+                    void historyStore
+                      .addApiUsage({
+                        id: crypto.randomUUID(),
+                        transcriptionId,
+                        apiType: "vocabulary_analysis",
+                        model: settingsStore.selectedLlmModelId,
+                        promptTokens: analysisResult.usage.promptTokens,
+                        completionTokens: analysisResult.usage.completionTokens,
+                        totalTokens: analysisResult.usage.totalTokens,
+                        promptTimeMs: analysisResult.usage.promptTimeMs,
+                        completionTimeMs: analysisResult.usage.completionTimeMs,
+                        totalTimeMs: analysisResult.usage.totalTimeMs,
+                        audioDurationMs: null,
+                        estimatedCostCeiling: calculateChatCostCeiling(
+                          analysisResult.usage.totalTokens,
+                          settingsStore.selectedLlmModelId,
+                        ),
+                      })
+                      .catch((err) =>
+                        writeErrorLog(
+                          `useVoiceFlowStore: addApiUsage(vocabulary_analysis) failed: ${extractErrorMessage(err)}`,
+                        ),
+                      );
+                  }
+
+                  // 通知 HUD 新學習的詞（只包含新增的，不包含已存在的）
+                  if (newTermList.length > 0) {
+                    writeInfoLog(
+                      `useVoiceFlowStore: emitting VOCABULARY_LEARNED: ${newTermList.join(", ")}`,
+                    );
+                    try {
+                      await emitEvent(VOCABULARY_LEARNED, {
+                        termList: newTermList,
+                      } satisfies VocabularyLearnedPayload);
+                      writeInfoLog(
+                        "useVoiceFlowStore: VOCABULARY_LEARNED emitted successfully",
+                      );
+
+                      // HUD 視窗在 idle 後已被 hideHud() 隱藏，需重新顯示才看得到通知
+                      clearLearnedHideTimer();
+                      const appWindow = getAppWindow();
+                      await appWindow.show();
+                      await appWindow.setIgnoreCursorEvents(true);
+                      learnedHideTimer = setTimeout(() => {
+                        learnedHideTimer = null;
+                        if (status.value === "idle") {
+                          hideHud().catch((err) =>
+                            writeErrorLog(
+                              `useVoiceFlowStore: learned hideHud failed: ${extractErrorMessage(err)}`,
+                            ),
+                          );
+                        }
+                      }, LEARNED_NOTIFICATION_TOTAL_DURATION_MS);
+                    } catch (emitErr) {
+                      writeErrorLog(
+                        `useVoiceFlowStore: VOCABULARY_LEARNED emit failed: ${extractErrorMessage(emitErr)}`,
+                      );
+                    }
+                  }
+                } catch (err) {
+                  writeErrorLog(
+                    `useVoiceFlowStore: correction analysis failed: ${extractErrorMessage(err)}`,
+                  );
+                  captureError(err, {
+                    source: "voice-flow",
+                    step: "correction-analysis",
+                  });
+                }
+              })();
+            },
+          );
+      } catch (err) {
+        stopCorrectionSnapshotPolling();
+        cleanupCorrectionMonitorListener();
+        writeErrorLog(
+          `useVoiceFlowStore: correction detection failed: ${extractErrorMessage(err)}`,
+        );
+        captureError(err, {
+          source: "voice-flow",
+          step: "correction-detection",
+        });
+      }
+    })();
+  }
+
   async function completePasteFlow(params: {
     text: string;
     successMessage: string;
@@ -413,8 +742,21 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       isRecording.value = false;
       transitionTo("success", params.successMessage);
       startQualityMonitorAfterPaste();
-      saveTranscriptionRecord(params.record);
-      saveApiUsageRecordList(params.record, params.chatUsage);
+      // api_usage FK 依賴 transcriptions — 必須等 transcription 寫入後才存 usage
+      void saveTranscriptionRecord(params.record).then(() => {
+        saveApiUsageRecordList(params.record, params.chatUsage);
+      });
+
+      // 權重更新（fire-and-forget）
+      const finalText = params.record.processedText ?? params.record.rawText;
+      updateVocabularyWeightsAfterPaste(finalText);
+
+      // 修正偵測（fire-and-forget，需 API key）
+      const settingsStore = useSettingsStore();
+      const apiKey = settingsStore.getApiKey();
+      if (apiKey) {
+        startCorrectionDetectionFlow(params.text, params.record.id, apiKey);
+      }
     } catch (pasteError) {
       isRecording.value = false;
       failRecordingFlow(
@@ -547,14 +889,12 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       }
 
       const vocabularyStore = useVocabularyStore();
-      const vocabularyTermList = vocabularyStore.termList.map(
-        (entry) => entry.term,
-      );
-      const hasVocabulary = vocabularyTermList.length > 0;
+      const whisperTermList = await vocabularyStore.getTopTermListByWeight(50);
+      const hasVocabulary = whisperTermList.length > 0;
 
       const result = await invoke<TranscriptionResult>("transcribe_audio", {
         apiKey,
-        vocabularyTermList: hasVocabulary ? vocabularyTermList : null,
+        vocabularyTermList: hasVocabulary ? whisperTermList : null,
         modelId: settingsStore.selectedWhisperModelId,
         language: settingsStore.getWhisperLanguageCode(),
       });
@@ -579,10 +919,12 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         const enhancementStartTime = performance.now();
 
         try {
+          const enhancementTermList =
+            await vocabularyStore.getTopTermListByWeight(50);
           const enhanceResult = await enhanceText(result.rawText, apiKey, {
             systemPrompt: settingsStore.getAiPrompt(),
             vocabularyTermList:
-              vocabularyTermList.length > 0 ? vocabularyTermList : undefined,
+              enhancementTermList.length > 0 ? enhancementTermList : undefined,
             modelId: settingsStore.selectedLlmModelId,
           });
 
@@ -736,8 +1078,11 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     clearAutoHideTimer();
     clearCollapseHideTimer();
     clearDelayedMuteTimer();
+    clearLearnedHideTimer();
     stopMonitorPolling();
     stopElapsedTimer();
+    stopCorrectionSnapshotPolling();
+    cleanupCorrectionMonitorListener();
 
     for (const unlisten of unlistenFunctions) {
       unlisten();

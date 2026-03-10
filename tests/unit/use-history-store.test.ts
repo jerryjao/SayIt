@@ -340,6 +340,8 @@ describe("useHistoryStore", () => {
         whisperBilledAudioMs: 0,
         llmRequestCount: 0,
         llmTotalTokens: 0,
+        vocabularyAnalysisRequestCount: 0,
+        vocabularyAnalysisTotalTokens: 0,
       });
     });
 
@@ -407,6 +409,8 @@ describe("useHistoryStore", () => {
         whisperBilledAudioMs: 50000,
         llmRequestCount: 3,
         llmTotalTokens: 1500,
+        vocabularyAnalysisRequestCount: 0,
+        vocabularyAnalysisTotalTokens: 0,
       });
     });
   });
@@ -533,6 +537,8 @@ describe("useHistoryStore", () => {
         whisperBilledAudioMs: 0,
         llmRequestCount: 0,
         llmTotalTokens: 0,
+        vocabularyAnalysisRequestCount: 0,
+        vocabularyAnalysisTotalTokens: 0,
       });
       expect(store.recentTranscriptionList).toHaveLength(0);
       expect(store.dailyUsageTrendList).toHaveLength(0);

@@ -1,5 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { createI18n } from "vue-i18n";
 import NotchHud from "../../src/components/NotchHud.vue";
 
 const { mockListen } = vi.hoisted(() => ({
@@ -11,6 +12,28 @@ vi.mock("@tauri-apps/api/event", () => ({
   emit: vi.fn().mockResolvedValue(undefined),
 }));
 
+const i18n = createI18n({
+  legacy: false,
+  locale: "zh-TW",
+  messages: {
+    "zh-TW": {
+      voiceFlow: {
+        vocabularyLearned: "已學習：{terms}",
+        vocabularyLearnedTruncated: "已學習：{terms} 等 {count} 個詞",
+      },
+    },
+  },
+});
+
+function mountNotchHud(props: Record<string, unknown>) {
+  return mount(NotchHud, {
+    props,
+    global: {
+      plugins: [i18n],
+    },
+  });
+}
+
 describe("NotchHud", () => {
   afterEach(() => {
     vi.useRealTimers();
@@ -19,13 +42,10 @@ describe("NotchHud", () => {
   });
 
   it("[P0] recording 狀態應顯示波形元素和計時器", () => {
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "recording",
-
-        recordingElapsedSeconds: 3,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "recording",
+      recordingElapsedSeconds: 3,
+      message: "",
     });
 
     expect(wrapper.find(".waveform-container").exists()).toBe(true);
@@ -34,13 +54,10 @@ describe("NotchHud", () => {
   });
 
   it("[P0] transcribing 狀態應顯示脈衝 dots", async () => {
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "recording",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "recording",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     await wrapper.setProps({ status: "transcribing" });
@@ -48,13 +65,10 @@ describe("NotchHud", () => {
   });
 
   it("[P0] success 狀態應顯示 SVG checkmark 和 converge dots", async () => {
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "success",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "success",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     expect(wrapper.find(".checkmark-svg").exists()).toBe(true);
@@ -65,13 +79,10 @@ describe("NotchHud", () => {
   });
 
   it("[P0] error 狀態無 message 應顯示 scatter dots 和 retry icon", () => {
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "error",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "error",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     expect(wrapper.findAll(".waveform-scatter").length).toBe(6);
@@ -80,13 +91,10 @@ describe("NotchHud", () => {
   });
 
   it("[P0] error 狀態有 message 應在瀏海下方顯示錯誤訊息", () => {
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "error",
-
-        recordingElapsedSeconds: 0,
-        message: "API Key 未設定",
-      },
+    const wrapper = mountNotchHud({
+      status: "error",
+      recordingElapsedSeconds: 0,
+      message: "API Key 未設定",
     });
 
     // scatter dots 仍在上排顯示
@@ -101,26 +109,20 @@ describe("NotchHud", () => {
   });
 
   it("[P0] idle 狀態應隱藏整個 HUD", () => {
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "idle",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "idle",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     expect(wrapper.find(".notch-wrapper").exists()).toBe(false);
   });
 
   it("[P1] error 狀態的 retry icon 應 emit retry 事件", async () => {
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "error",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "error",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     await wrapper.find(".retry-icon").trigger("click");
@@ -128,13 +130,10 @@ describe("NotchHud", () => {
   });
 
   it("[P1] success 狀態不應帶有 notch-green-flash class（底色 flash 已移除）", () => {
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "success",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "success",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     expect(wrapper.find(".notch-hud").classes()).not.toContain(
@@ -143,13 +142,10 @@ describe("NotchHud", () => {
   });
 
   it("[P1] error 狀態應帶有 notch-shake class", () => {
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "error",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "error",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     expect(wrapper.find(".notch-hud").classes()).toContain("notch-shake");
@@ -157,13 +153,10 @@ describe("NotchHud", () => {
 
   it("[P1] error → idle 應先進入 collapsing 再隱藏", async () => {
     vi.useFakeTimers();
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "error",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "error",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     expect(wrapper.find(".notch-wrapper").exists()).toBe(true);
@@ -183,13 +176,10 @@ describe("NotchHud", () => {
 
   it("[P1] success → idle 應先進入 collapsing 再隱藏", async () => {
     vi.useFakeTimers();
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "success",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "success",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     expect(wrapper.find(".notch-wrapper").exists()).toBe(true);
@@ -207,13 +197,10 @@ describe("NotchHud", () => {
 
   it("[P1] collapsing 期間切換到 recording 應取消收縮", async () => {
     vi.useFakeTimers();
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "error",
-
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "error",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     await wrapper.setProps({ status: "idle" });
@@ -242,12 +229,10 @@ describe("NotchHud", () => {
     const mockUnlisten = vi.fn();
     mockListen.mockImplementationOnce(async () => deferredListen);
 
-    const wrapper = mount(NotchHud, {
-      props: {
-        status: "recording",
-        recordingElapsedSeconds: 0,
-        message: "",
-      },
+    const wrapper = mountNotchHud({
+      status: "recording",
+      recordingElapsedSeconds: 0,
+      message: "",
     });
 
     await wrapper.setProps({ status: "idle" });

@@ -102,6 +102,11 @@
       "transcriptionLanguageDescription": "Language used for speech recognition",
       "transcriptionLanguageUpdated": "Transcription language updated",
       "autoDetect": "Auto Detect"
+    },
+    "smartDictionary": {
+      "title": "Smart Dictionary Learning",
+      "description": "Auto-detect corrections after paste and learn new terms via AI analysis",
+      "privacyNote": "When enabled, the system reads text near the cursor for AI analysis. No original text is stored"
     }
   },
   "dashboard": {
@@ -125,7 +130,9 @@
     "quotaWhisperRequests": "Whisper {used}/{limit} req",
     "quotaAudio": "Audio {used}/{limit}",
     "quotaLlmRequests": "LLM {used}/{limit} req",
-    "quotaLlmTokens": "LLM {used}/{limit} tokens"
+    "quotaLlmTokens": "LLM {used}/{limit} tokens",
+    "vocabularyAnalysis": "Dictionary Analysis",
+    "vocabularyAnalysisUsage": "Dictionary Analysis: {requests} req / {tokens} tokens"
   },
   "history": {
     "searchPlaceholder": "Search transcriptions...",
@@ -158,7 +165,14 @@
     "termHeader": "Term",
     "dateHeader": "Date Added",
     "actionHeader": "Actions",
-    "loadFailed": "Failed to load term list"
+    "loadFailed": "Failed to load term list",
+    "aiRecommended": "AI Suggested",
+    "manualAdded": "Manually Added",
+    "weight": "Weight",
+    "description": "Dictionary terms are provided to the AI during speech recognition to improve accuracy for proper nouns and technical terms.",
+    "weightDescription": "During each speech recognition, the top {limit} terms by weight are included in the AI recognition prompt. When the AI detects you repeatedly correcting the same term, its weight increases automatically.",
+    "noAiSuggestions": "No AI suggestions yet. Enable Smart Dictionary Learning to auto-learn new terms",
+    "aiTermCount": "{count} terms"
   },
   "accessibility": {
     "title": "Accessibility Permission Required",
@@ -179,7 +193,10 @@
     "pasteSuccessUnenhanced": "Pasted (unenhanced)",
     "enhancing": "Enhancing...",
     "pasteFailed": "Paste failed",
-    "recordingTooShort": "Recording too short"
+    "recordingTooShort": "Recording too short",
+    "vocabularyLearnedLabel": "Added to dictionary",
+    "vocabularyLearned": "{terms}",
+    "vocabularyLearnedTruncated": "{terms} +{count} more"
   },
   "errors": {
     "apiKeyEmpty": "API Key cannot be empty",

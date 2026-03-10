@@ -8,7 +8,7 @@ import {
   Settings,
 } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
-import { computed, markRaw, onMounted, ref } from "vue";
+import { computed, markRaw, onMounted, onUnmounted, ref } from "vue";
 import { RouterLink, RouterView, useRoute } from "vue-router";
 import AccessibilityGuide from "./components/AccessibilityGuide.vue";
 import SiteHeader from "./components/SiteHeader.vue";
@@ -24,7 +24,10 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useFeedbackMessage } from "./composables/useFeedbackMessage";
+import { listenToEvent, VOCABULARY_CHANGED } from "./composables/useTauriEvents";
+import { useVocabularyStore } from "./stores/useVocabularyStore";
 import { captureError } from "./lib/sentry";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { UpdateCheckResult } from "./lib/autoUpdater";
 import {
   Sidebar,
@@ -186,7 +189,16 @@ const isUpdateBusy = computed(() =>
 );
 
 
+const vocabularyStore = useVocabularyStore();
+let unlistenVocabularyChanged: UnlistenFn | null = null;
+
 onMounted(async () => {
+  // 監聽詞彙變更（HUD 視窗 AI 新增詞彙時同步 Dashboard）
+  unlistenVocabularyChanged = await listenToEvent(VOCABULARY_CHANGED, () => {
+    console.log("[main-window] VOCABULARY_CHANGED received, refreshing termList");
+    void vocabularyStore.fetchTermList();
+  });
+
   // macOS 無障礙權限檢查
   const isMacOS = navigator.userAgent.includes("Macintosh");
   if (isMacOS) {
@@ -205,6 +217,10 @@ onMounted(async () => {
 
   // 自動檢查更新（靜默）
   autoCheckAndDownload();
+});
+
+onUnmounted(() => {
+  unlistenVocabularyChanged?.();
 });
 </script>
 

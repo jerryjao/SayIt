@@ -102,6 +102,11 @@
       "transcriptionLanguageDescription": "음성 인식에 사용할 언어",
       "transcriptionLanguageUpdated": "전사 언어가 업데이트되었습니다",
       "autoDetect": "자동 감지"
+    },
+    "smartDictionary": {
+      "title": "스마트 사전 학습",
+      "description": "붙여넣기 후 수정을 자동 감지하고 AI 분석으로 새 용어 학습",
+      "privacyNote": "활성화하면 AI 분석을 위해 커서 주변의 텍스트를 읽습니다. 원문은 저장되지 않습니다"
     }
   },
   "dashboard": {
@@ -125,7 +130,9 @@
     "quotaWhisperRequests": "Whisper {used}/{limit} 회",
     "quotaAudio": "오디오 {used}/{limit}",
     "quotaLlmRequests": "LLM {used}/{limit} 회",
-    "quotaLlmTokens": "LLM {used}/{limit} tokens"
+    "quotaLlmTokens": "LLM {used}/{limit} tokens",
+    "vocabularyAnalysis": "사전 분석",
+    "vocabularyAnalysisUsage": "사전 분석: {requests} 회 / {tokens} tokens"
   },
   "history": {
     "searchPlaceholder": "전사 기록 검색...",
@@ -158,7 +165,14 @@
     "termHeader": "단어",
     "dateHeader": "추가 일시",
     "actionHeader": "작업",
-    "loadFailed": "단어 목록 로드에 실패했습니다"
+    "loadFailed": "단어 목록 로드에 실패했습니다",
+    "aiRecommended": "AI 추천",
+    "manualAdded": "수동 추가",
+    "weight": "가중치",
+    "description": "사전 용어는 음성 인식 시 AI에 제공되어 고유명사와 기술 용어의 인식 정확도를 높입니다.",
+    "weightDescription": "음성 인식 시 가중치가 가장 높은 상위 {limit}개 용어가 AI 인식 프롬프트에 포함됩니다. 동일한 수정이 반복 감지되면 해당 용어의 가중치가 자동으로 증가합니다.",
+    "noAiSuggestions": "아직 AI 추천 용어가 없습니다. 스마트 사전 학습을 활성화하면 자동으로 학습됩니다",
+    "aiTermCount": "{count}개 용어"
   },
   "accessibility": {
     "title": "손쉬운 사용 권한 필요",
@@ -179,7 +193,10 @@
     "pasteSuccessUnenhanced": "붙여넣기 완료 (미정리)",
     "enhancing": "정리 중...",
     "pasteFailed": "붙여넣기 실패",
-    "recordingTooShort": "녹음 시간이 너무 짧습니다"
+    "recordingTooShort": "녹음 시간이 너무 짧습니다",
+    "vocabularyLearnedLabel": "사전에 추가",
+    "vocabularyLearned": "{terms}",
+    "vocabularyLearnedTruncated": "{terms} 외 {count}개"
   },
   "errors": {
     "apiKeyEmpty": "API Key는 비워둘 수 없습니다",

@@ -423,11 +423,14 @@ pub fn run() {
             plugins::hotkey_listener::open_accessibility_settings,
             plugins::hotkey_listener::reinitialize_hotkey_listener,
             plugins::keyboard_monitor::start_quality_monitor,
+            plugins::keyboard_monitor::start_correction_monitor,
+            plugins::text_field_reader::read_focused_text_field,
             plugins::audio_recorder::start_recording,
             plugins::audio_recorder::stop_recording,
             plugins::transcription::transcribe_audio,
             plugins::sound_feedback::play_start_sound,
-            plugins::sound_feedback::play_stop_sound
+            plugins::sound_feedback::play_stop_sound,
+            plugins::sound_feedback::play_learned_sound
         ])
         .setup(|app| {
             // 初始化 keyboard monitor 狀態

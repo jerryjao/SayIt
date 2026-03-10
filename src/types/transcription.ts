@@ -20,6 +20,8 @@ export interface DailyQuotaUsage {
   whisperBilledAudioMs: number;
   llmRequestCount: number;
   llmTotalTokens: number;
+  vocabularyAnalysisRequestCount: number;
+  vocabularyAnalysisTotalTokens: number;
 }
 
 export interface DashboardStats {
@@ -30,7 +32,7 @@ export interface DashboardStats {
   dailyQuotaUsage: DailyQuotaUsage;
 }
 
-export type ApiType = "whisper" | "chat";
+export type ApiType = "whisper" | "chat" | "vocabulary_analysis";
 
 export interface ChatUsageData {
   promptTokens: number;

@@ -442,6 +442,18 @@ async function handleTranscriptionLocaleChange(newLocale: TranscriptionLocale) {
   }
 }
 
+// ── 智慧字典學習 ────────────────────────────────────────────
+const smartDictionaryFeedback = useFeedbackMessage();
+
+async function handleToggleSmartDictionary(newValue: boolean) {
+  try {
+    await settingsStore.saveSmartDictionaryEnabled(newValue);
+    smartDictionaryFeedback.show("success", t("common.save"));
+  } catch (err) {
+    smartDictionaryFeedback.show("error", extractErrorMessage(err));
+  }
+}
+
 // ── 應用程式 ────────────────────────────────────────────────
 const autoStartFeedback = useFeedbackMessage();
 const isTogglingAutoStart = ref(false);
@@ -488,6 +500,7 @@ onBeforeUnmount(() => {
   localeFeedback.clearTimer();
   transcriptionLocaleFeedback.clearTimer();
   autoStartFeedback.clearTimer();
+  smartDictionaryFeedback.clearTimer();
   clearTimeout(deleteConfirmTimeoutId);
   clearTimeout(resetPromptConfirmTimeoutId);
 });
@@ -954,6 +967,45 @@ onBeforeUnmount(() => {
             "
           >
             {{ enhancementThresholdFeedback.message.value }}
+          </p>
+        </transition>
+      </CardContent>
+    </Card>
+
+    <!-- 智慧字典學習（macOS only — Windows 尚未支援 text field 讀取） -->
+    <Card v-if="isMac">
+      <CardHeader class="border-b border-border">
+        <CardTitle class="text-base">{{ $t("settings.smartDictionary.title") }}</CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <p class="text-sm text-muted-foreground leading-relaxed">
+          {{ $t("settings.smartDictionary.description") }}
+        </p>
+
+        <div class="flex items-center justify-between">
+          <Label for="smart-dictionary-toggle">{{ $t("settings.smartDictionary.title") }}</Label>
+          <Switch
+            id="smart-dictionary-toggle"
+            :model-value="settingsStore.isSmartDictionaryEnabled"
+            @update:model-value="handleToggleSmartDictionary"
+          />
+        </div>
+
+        <p class="text-xs text-muted-foreground">
+          {{ $t("settings.smartDictionary.privacyNote") }}
+        </p>
+
+        <transition name="feedback-fade">
+          <p
+            v-if="smartDictionaryFeedback.message.value !== ''"
+            class="text-sm"
+            :class="
+              smartDictionaryFeedback.type.value === 'success'
+                ? 'text-green-400'
+                : 'text-red-400'
+            "
+          >
+            {{ smartDictionaryFeedback.message.value }}
           </p>
         </transition>
       </CardContent>

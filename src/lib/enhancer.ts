@@ -7,7 +7,7 @@ import i18n from "../i18n";
 
 const GROQ_CHAT_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 const ENHANCEMENT_TIMEOUT_MS = 5000;
-const MAX_VOCABULARY_TERMS = 100;
+const MAX_VOCABULARY_TERMS = 50;
 
 export class EnhancerApiError extends Error {
   constructor(

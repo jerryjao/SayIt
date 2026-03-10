@@ -102,6 +102,11 @@
       "transcriptionLanguageDescription": "語音轉文字時使用的辨識語言",
       "transcriptionLanguageUpdated": "轉錄語言已更新",
       "autoDetect": "自動偵測"
+    },
+    "smartDictionary": {
+      "title": "智慧字典學習",
+      "description": "轉錄貼上後自動偵測修正，透過 AI 分析學習新詞彙",
+      "privacyNote": "啟用後，系統會讀取游標附近的文字用於 AI 分析，不儲存原文"
     }
   },
   "dashboard": {
@@ -125,7 +130,9 @@
     "quotaWhisperRequests": "Whisper {used}/{limit} 次",
     "quotaAudio": "音訊 {used}/{limit}",
     "quotaLlmRequests": "LLM {used}/{limit} 次",
-    "quotaLlmTokens": "LLM {used}/{limit} tokens"
+    "quotaLlmTokens": "LLM {used}/{limit} tokens",
+    "vocabularyAnalysis": "字典分析",
+    "vocabularyAnalysisUsage": "字典分析：{requests} 次 / {tokens} tokens"
   },
   "history": {
     "searchPlaceholder": "搜尋轉錄記錄...",
@@ -158,7 +165,14 @@
     "termHeader": "詞彙",
     "dateHeader": "新增時間",
     "actionHeader": "操作",
-    "loadFailed": "載入詞彙清單失敗"
+    "loadFailed": "載入詞彙清單失敗",
+    "aiRecommended": "AI 推薦",
+    "manualAdded": "手動新增",
+    "weight": "權重",
+    "description": "字典詞彙會在語音辨識時提供給 AI，提升專有名詞與術語的辨識準確度。",
+    "weightDescription": "每次語音辨識時，系統會將權重最高的前 {limit} 個詞彙加入 AI 辨識提示。當 AI 偵測到你重複修正同一個詞時，該詞的權重會自動提升。",
+    "noAiSuggestions": "尚無 AI 推薦詞彙，啟用智慧字典學習後系統會自動學習",
+    "aiTermCount": "{count} 個詞"
   },
   "accessibility": {
     "title": "需要輔助使用權限",
@@ -179,7 +193,10 @@
     "pasteSuccessUnenhanced": "已貼上（未整理）",
     "enhancing": "整理中...",
     "pasteFailed": "貼上失敗",
-    "recordingTooShort": "錄音時間太短"
+    "recordingTooShort": "錄音時間太短",
+    "vocabularyLearnedLabel": "新增字典",
+    "vocabularyLearned": "{terms}",
+    "vocabularyLearnedTruncated": "{terms} 等 {count} 個"
   },
   "errors": {
     "apiKeyEmpty": "API Key 不可為空白",

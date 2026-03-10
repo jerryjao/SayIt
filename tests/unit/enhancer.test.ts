@@ -334,31 +334,31 @@ describe("enhancer.ts", () => {
   });
 
   describe("大量詞彙截取 (Story 3.2)", () => {
-    it("[P0] buildSystemPrompt 應截取最多 100 個詞彙", async () => {
+    it("[P0] buildSystemPrompt 應截取最多 50 個詞彙", async () => {
       const { buildSystemPrompt } = await import("../../src/lib/enhancer");
       const largeTermList = Array.from(
-        { length: 120 },
+        { length: 70 },
         (_, i) => `Term${i + 1}`,
       );
 
       const result = buildSystemPrompt("基礎 prompt", largeTermList);
 
       expect(result).toContain("Term1");
-      expect(result).toContain("Term100");
-      expect(result).not.toContain("Term101");
+      expect(result).toContain("Term50");
+      expect(result).not.toContain("Term51");
     });
 
-    it("[P0] 恰好 100 個詞彙應全部包含", async () => {
+    it("[P0] 恰好 50 個詞彙應全部包含", async () => {
       const { buildSystemPrompt } = await import("../../src/lib/enhancer");
       const exactTermList = Array.from(
-        { length: 100 },
+        { length: 50 },
         (_, i) => `Term${i + 1}`,
       );
 
       const result = buildSystemPrompt("基礎 prompt", exactTermList);
 
       expect(result).toContain("Term1");
-      expect(result).toContain("Term100");
+      expect(result).toContain("Term50");
     });
   });
 

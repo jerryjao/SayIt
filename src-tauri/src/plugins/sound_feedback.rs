@@ -56,6 +56,10 @@ mod macos {
     pub fn play_stop_sound() {
         play_system_sound("/System/Library/Sounds/Bottle.aiff");
     }
+
+    pub fn play_learned_sound() {
+        play_system_sound("/System/Library/Sounds/Glass.aiff");
+    }
 }
 
 // ========== Windows PlaySound Implementation ==========
@@ -82,6 +86,11 @@ mod windows_sound {
         if !ok.as_bool() {
             eprintln!("[sound-feedback] PlaySoundA(stop) failed");
         }
+    }
+
+    pub fn play_learned_sound() {
+        // Windows 暫時復用 start sound，之後可換專用音效
+        play_start_sound();
     }
 }
 
@@ -117,6 +126,21 @@ fn platform_play_stop_sound() {
     }
 }
 
+fn platform_play_learned_sound() {
+    #[cfg(target_os = "macos")]
+    {
+        macos::play_learned_sound();
+    }
+    #[cfg(target_os = "windows")]
+    {
+        windows_sound::play_learned_sound();
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        println!("[sound-feedback] play_learned_sound: unsupported platform (no-op)");
+    }
+}
+
 // ========== Tauri Commands ==========
 
 #[command]
@@ -127,6 +151,11 @@ pub fn play_start_sound() {
 #[command]
 pub fn play_stop_sound() {
     platform_play_stop_sound();
+}
+
+#[command]
+pub fn play_learned_sound() {
+    platform_play_learned_sound();
 }
 
 // ========== Tests ==========

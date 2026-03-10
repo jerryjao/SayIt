@@ -228,7 +228,7 @@ mod tests {
     fn test_format_whisper_prompt_exceeds_max() {
         let terms: Vec<String> = (0..100).map(|i| format!("term{}", i)).collect();
         let result = format_whisper_prompt(&terms);
-        // Should only include first 50 terms
+        // Should only include first 30 terms
         let parts: Vec<&str> = result
             .strip_prefix("Important Vocabulary: ")
             .unwrap()
@@ -236,7 +236,7 @@ mod tests {
             .collect();
         assert_eq!(parts.len(), MAX_WHISPER_PROMPT_TERMS);
         assert_eq!(parts[0], "term0");
-        assert_eq!(parts[49], "term49");
+        assert_eq!(parts[29], "term29");
     }
 
     #[test]

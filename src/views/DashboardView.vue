@@ -211,6 +211,17 @@ onBeforeUnmount(() => {
                 </div>
               </div>
             </div>
+            <div
+              v-if="historyStore.dashboardStats.dailyQuotaUsage.vocabularyAnalysisRequestCount > 0"
+              class="mt-2 pt-2 border-t border-border"
+            >
+              <span class="text-xs text-muted-foreground">
+                {{ $t("dashboard.vocabularyAnalysisUsage", {
+                  requests: historyStore.dashboardStats.dailyQuotaUsage.vocabularyAnalysisRequestCount,
+                  tokens: formatNumber(historyStore.dashboardStats.dailyQuotaUsage.vocabularyAnalysisTotalTokens),
+                }) }}
+              </span>
+            </div>
           </TooltipContent>
         </Tooltip>
       </TooltipProvider>

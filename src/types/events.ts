@@ -26,6 +26,7 @@ export type SettingsKey =
   | "llmModel"
   | "whisperModel"
   | "muteOnRecording"
+  | "smartDictionaryEnabled"
   | "locale"
   | "transcriptionLocale";
 
@@ -59,4 +60,14 @@ export interface HotkeyErrorPayload {
 
 export interface QualityMonitorResultPayload {
   wasModified: boolean;
+}
+
+export interface CorrectionMonitorResultPayload {
+  anyKeyPressed: boolean;
+  enterPressed: boolean;
+  idleTimeout: boolean;
+}
+
+export interface VocabularyLearnedPayload {
+  termList: string[];
 }

@@ -1,7 +1,14 @@
 <script setup lang="ts">
-import { computed, ref, watch, onUnmounted } from "vue";
+import { computed, ref, watch, onMounted, onUnmounted } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { HudStatus } from "../types";
+import type { VocabularyLearnedPayload } from "../types/events";
 import { useAudioWaveform } from "../composables/useAudioWaveform";
+import { listenToEvent, VOCABULARY_LEARNED } from "../composables/useTauriEvents";
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n();
 
 type VisualMode =
   | "hidden"
@@ -10,7 +17,8 @@ type VisualMode =
   | "transcribing"
   | "success"
   | "error"
-  | "collapsing";
+  | "collapsing"
+  | "learned";
 
 const props = defineProps<{
   status: HudStatus;
@@ -25,7 +33,13 @@ defineEmits<{
 const visualMode = ref<VisualMode>("hidden");
 let morphingTimer: ReturnType<typeof setTimeout> | null = null;
 let collapsingTimer: ReturnType<typeof setTimeout> | null = null;
+let learnedTimer: ReturnType<typeof setTimeout> | null = null;
+let unlistenVocabularyLearned: UnlistenFn | null = null;
+const pendingLearnedTermList = ref<string[][]>([]);
+const learnedDisplayText = ref("");
 const COLLAPSE_ANIMATION_DURATION_MS = 400;
+const LEARNED_DISPLAY_DURATION_MS = 2000;
+const MAX_DISPLAY_TERM_COUNT = 3;
 
 const { waveformLevelList, startWaveformAnimation, stopWaveformAnimation } =
   useAudioWaveform();
@@ -49,6 +63,7 @@ const NOTCH_SHAPES: Record<string, NotchShapeParams> = {
   transcribing: { width: 350, height: 42, topRadius: 14, bottomRadius: 22 },
   success: { width: 350, height: 42, topRadius: 14, bottomRadius: 22 },
   error: { width: 350, height: 42, topRadius: 14, bottomRadius: 22 },
+  learned: { width: 350, height: 42, topRadius: 14, bottomRadius: 22 },
   collapsing: { width: 200, height: 32, topRadius: 10, bottomRadius: 16 },
 };
 
@@ -61,9 +76,13 @@ const hasErrorMessage = computed(
   () => visualMode.value === "error" && props.message !== "",
 );
 
+const isExpandedMode = computed(
+  () => hasErrorMessage.value || visualMode.value === "learned",
+);
+
 const notchStyle = computed(() => {
   let params = NOTCH_SHAPES[visualMode.value] ?? NOTCH_SHAPES.hidden;
-  if (hasErrorMessage.value) {
+  if (isExpandedMode.value) {
     params = { ...params, height: ERROR_WITH_MESSAGE_HEIGHT };
   }
   return {
@@ -121,6 +140,17 @@ const notchHudClassList = computed(() => ({
   "notch-collapsing": visualMode.value === "collapsing",
 }));
 
+const isHighPriorityMode = computed(() => {
+  const mode = visualMode.value;
+  return (
+    mode === "recording" ||
+    mode === "morphing" ||
+    mode === "transcribing" ||
+    mode === "success" ||
+    mode === "error"
+  );
+});
+
 function clearMorphingTimer() {
   if (morphingTimer) {
     clearTimeout(morphingTimer);
@@ -135,18 +165,81 @@ function clearCollapsingTimer() {
   }
 }
 
+function clearLearnedTimer() {
+  if (learnedTimer) {
+    clearTimeout(learnedTimer);
+    learnedTimer = null;
+  }
+}
+
+function formatLearnedText(termList: string[]): string {
+  if (termList.length <= MAX_DISPLAY_TERM_COUNT) {
+    return t("voiceFlow.vocabularyLearned", {
+      terms: termList.join(", "),
+    });
+  }
+  const displayedTermList = termList.slice(0, MAX_DISPLAY_TERM_COUNT);
+  return t("voiceFlow.vocabularyLearnedTruncated", {
+    terms: displayedTermList.join(", "),
+    count: termList.length - MAX_DISPLAY_TERM_COUNT,
+  });
+}
+
+function showLearnedNotification(termList: string[]) {
+  learnedDisplayText.value = formatLearnedText(termList);
+  visualMode.value = "learned";
+  void invoke("play_learned_sound").catch(() => {});
+  clearLearnedTimer();
+  learnedTimer = setTimeout(() => {
+    visualMode.value = "collapsing";
+    collapsingTimer = setTimeout(() => {
+      visualMode.value = "hidden";
+      processNextLearnedNotification();
+    }, COLLAPSE_ANIMATION_DURATION_MS);
+  }, LEARNED_DISPLAY_DURATION_MS);
+}
+
+function processNextLearnedNotification() {
+  if (pendingLearnedTermList.value.length === 0) return;
+  if (isHighPriorityMode.value) return;
+  const nextTermList = pendingLearnedTermList.value.shift()!;
+  showLearnedNotification(nextTermList);
+}
+
+function handleVocabularyLearned(payload: VocabularyLearnedPayload) {
+  console.log(
+    `[NotchHud] VOCABULARY_LEARNED received: termList=${JSON.stringify(payload.termList)}, visualMode=${visualMode.value}, isHighPriority=${isHighPriorityMode.value}`,
+  );
+  if (!payload.termList || payload.termList.length === 0) return;
+
+  if (isHighPriorityMode.value || visualMode.value === "learned") {
+    console.log("[NotchHud] queued (high priority or already showing learned)");
+    pendingLearnedTermList.value.push(payload.termList);
+    return;
+  }
+
+  console.log("[NotchHud] showing learned notification now");
+  showLearnedNotification(payload.termList);
+}
+
 watch(
   () => props.status,
   (nextStatus) => {
     clearMorphingTimer();
     clearCollapsingTimer();
+    clearLearnedTimer();
 
     if (nextStatus === "idle") {
       stopWaveformAnimation();
-      if (visualMode.value === "hidden") return;
+      if (visualMode.value === "learned") return;
+      if (visualMode.value === "hidden") {
+        processNextLearnedNotification();
+        return;
+      }
       visualMode.value = "collapsing";
       collapsingTimer = setTimeout(() => {
         visualMode.value = "hidden";
+        processNextLearnedNotification();
       }, COLLAPSE_ANIMATION_DURATION_MS);
       return;
     }
@@ -187,10 +280,21 @@ watch(
   { immediate: true },
 );
 
+onMounted(async () => {
+  unlistenVocabularyLearned = await listenToEvent<VocabularyLearnedPayload>(
+    VOCABULARY_LEARNED,
+    (event) => {
+      handleVocabularyLearned(event.payload);
+    },
+  );
+});
+
 onUnmounted(() => {
   clearMorphingTimer();
   clearCollapsingTimer();
+  clearLearnedTimer();
   stopWaveformAnimation();
+  unlistenVocabularyLearned?.();
 });
 </script>
 
@@ -198,46 +302,71 @@ onUnmounted(() => {
   <div
     v-if="visualMode !== 'hidden'"
     class="notch-wrapper"
-    :class="{ 'notch-wrapper-success': visualMode === 'success' }"
+    :class="{
+      'notch-wrapper-success': visualMode === 'success',
+      'notch-wrapper-learned': visualMode === 'learned',
+    }"
   >
     <div
       class="notch-hud"
-      :class="[notchHudClassList, { 'notch-hud-expanded': hasErrorMessage }]"
+      :class="[notchHudClassList, { 'notch-hud-expanded': isExpandedMode }]"
       :style="notchStyle"
     >
       <div class="notch-content">
         <div class="notch-left">
-          <div class="waveform-container">
-            <span
-              v-for="(style, index) in barStyleList"
-              :key="index"
-              class="waveform-element"
-              :class="waveformElementClass"
-              :style="style"
-            />
-          </div>
+          <!-- Learned: book icon -->
           <svg
-            v-if="visualMode === 'success'"
-            class="checkmark-svg"
+            v-if="visualMode === 'learned'"
+            class="learned-icon-svg"
             width="18"
             height="18"
             viewBox="0 0 24 24"
+            fill="none"
+            stroke="rgba(147, 197, 253, 0.95)"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
           >
-            <path
-              d="M4 12l6 6L20 6"
-              fill="none"
-              stroke="#22c55e"
-              stroke-width="3"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            />
+            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z" />
+            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z" />
           </svg>
+          <!-- Other modes: waveform + checkmark -->
+          <template v-else>
+            <div class="waveform-container">
+              <span
+                v-for="(style, index) in barStyleList"
+                :key="index"
+                class="waveform-element"
+                :class="waveformElementClass"
+                :style="style"
+              />
+            </div>
+            <svg
+              v-if="visualMode === 'success'"
+              class="checkmark-svg"
+              width="18"
+              height="18"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M4 12l6 6L20 6"
+                fill="none"
+                stroke="#22c55e"
+                stroke-width="3"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </template>
         </div>
 
         <div class="notch-camera-gap" />
 
         <div class="notch-right">
-          <span v-if="visualMode === 'recording'" class="elapsed-timer">
+          <span v-if="visualMode === 'learned'" class="learned-label">
+            {{ $t('voiceFlow.vocabularyLearnedLabel') }}
+          </span>
+          <span v-else-if="visualMode === 'recording'" class="elapsed-timer">
             {{ formattedElapsedTime }}
           </span>
           <span
@@ -246,6 +375,11 @@ onUnmounted(() => {
             @click.stop="$emit('retry')"
           >&#x21BB;</span>
         </div>
+      </div>
+
+      <!-- Learned: terms row below camera -->
+      <div v-if="visualMode === 'learned'" class="learned-terms-row">
+        <span class="learned-terms">{{ learnedDisplayText }}</span>
       </div>
 
       <div v-if="hasErrorMessage" class="error-message-row">
@@ -436,6 +570,68 @@ onUnmounted(() => {
 }
 
 
+/* ---- Learned: blue glow + text ---- */
+.notch-wrapper-learned {
+  filter:
+    drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3))
+    drop-shadow(0 0 10px rgba(59, 130, 246, 0.5))
+    drop-shadow(0 0 25px rgba(59, 130, 246, 0.2));
+  animation: learnedGlow 2s ease-out forwards;
+}
+
+@keyframes learnedGlow {
+  0% {
+    filter:
+      drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3))
+      drop-shadow(0 0 12px rgba(59, 130, 246, 0.6))
+      drop-shadow(0 0 30px rgba(59, 130, 246, 0.3));
+  }
+  100% {
+    filter:
+      drop-shadow(0 4px 12px rgba(0, 0, 0, 0.3))
+      drop-shadow(0 0 2px rgba(59, 130, 246, 0));
+  }
+}
+
+.learned-icon-svg {
+  animation: learnedIconFadeIn 0.3s ease-out;
+}
+
+@keyframes learnedIconFadeIn {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.learned-label {
+  color: rgba(147, 197, 253, 0.95);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: learnedTextFadeIn 0.3s ease-out;
+}
+
+.learned-terms-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 40px 6px;
+  animation: learnedTextFadeIn 0.3s ease-out 0.2s both;
+}
+
+.learned-terms {
+  color: rgba(147, 197, 253, 0.95);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes learnedTextFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* ---- Error: scatter + shake ---- */
 .waveform-scatter {
   width: 6px;
@@ -526,7 +722,8 @@ onUnmounted(() => {
 
 /* ---- Collapsing: 內容淡出 ---- */
 .notch-collapsing .notch-content,
-.notch-collapsing .error-message-row {
+.notch-collapsing .error-message-row,
+.notch-collapsing .learned-terms-row {
   opacity: 0;
   transition: opacity 0.15s ease;
 }

@@ -1,10 +1,10 @@
 ---
 project_name: 'sayit'
 user_name: 'Jackle'
-date: '2026-03-09'
-sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n']
+date: '2026-03-10'
+sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n', 'smart_dictionary']
 status: 'complete'
-rule_count: 155
+rule_count: 161
 optimized_for_llm: true
 ---
 
@@ -142,7 +142,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **平台隔離** — `#[cfg(target_os = "macos")]` / `#[cfg(target_os = "windows")]` 隔離，不可在同一函式中混合
 - **unsafe 標記** — macOS `objc::msg_send!` 呼叫必須在 `unsafe {}` 區塊內
 - **原子操作** — 跨執行緒共享狀態使用 `AtomicBool` + `Ordering::SeqCst`
-- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`, `audio_control`, `audio_recorder`, `transcription`, `sound_feedback`）
+- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`, `audio_control`, `audio_recorder`, `transcription`, `sound_feedback`, `text_field_reader`）
 - **Plugin State shutdown 慣例** — 每個 Plugin State struct 必須實作 `pub fn shutdown(&self)` 方法，用於 App 退出時清理資源（停止錄音、恢復音量、取消 CGEventTap 等）。`shutdown()` 內部必須處理 `Mutex` poisoned 的情況（`match lock() { Err(_) => return }`）
 - **Serde JSON 序列化** — Rust → 前端的 payload struct 使用 `#[serde(rename_all = "camelCase")]` 確保前端收到 camelCase JSON
 - **Crate 命名** — `name = "sayit_lib"`，`crate-type = ["staticlib", "cdylib", "rlib"]`
@@ -200,7 +200,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 #### Persistent Event Tap 模式（keyboard_monitor）
 
 - **持久監聽器** — `keyboard_monitor.rs` 在 `KeyboardMonitorState::new()` 時建立一次 CGEventTap（macOS）/ Windows Hook，App 生命週期內永不銷毀
-- **Flag 控制** — 靠 `is_monitoring: AtomicBool` 控制是否處理事件，`start_quality_monitor` command 只翻 flag + 啟動計時器 thread
+- **Flag 控制** — 靠 `is_monitoring: AtomicBool`（品質監控）和 `correction_monitoring: AtomicBool`（修正偵測）獨立控制是否處理事件。兩個 monitor 使用完全獨立的 flag 集，可同時啟用
 - **設計動機** — 重複建立/銷毀 CGEventTap 會產生幽靈按鍵（ghost Enter key），這是已確認的 bug 根因
 
 #### Tauri Events 完整清單
@@ -216,7 +216,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `hotkey:toggled` | `HOTKEY_TOGGLED` | Rust → HUD | `HotkeyEventPayload` |
 | `hotkey:error` | `HOTKEY_ERROR` | Rust → HUD | `HotkeyErrorPayload` |
 | `quality-monitor:result` | `QUALITY_MONITOR_RESULT` | Rust → HUD | `QualityMonitorResultPayload` |
+| `correction-monitor:result` | `CORRECTION_MONITOR_RESULT` | Rust → HUD | `CorrectionMonitorResultPayload` |
 | `audio:waveform` | `AUDIO_WAVEFORM` | Rust → HUD | `WaveformPayload { levels: [f32; 6] }` |
+| `vocabulary:learned` | `VOCABULARY_LEARNED` | VoiceFlowStore → HUD | `VocabularyLearnedPayload` |
 
 #### i18n 多語言（vue-i18n）
 
@@ -278,7 +280,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **時間戳** — `created_at TEXT DEFAULT (datetime('now'))`
 - **操作限制** — SQLite 操作只從 Pinia store actions 發起，元件不可直接執行 SQL
 - **SQL 參數** — 使用 `$1`, `$2` 位置參數語法（tauri-plugin-sql 規範）
-- **Schema Migration** — `schema_version` 表追蹤版本號，migration 在 `database.ts` 中依序執行（`if (currentVersion < N)` → 建表/改表 → 更新版本號），當前版本：v2
+- **Schema Migration** — `schema_version` 表追蹤版本號，migration 在 `database.ts` 中依序執行（`if (currentVersion < N)` → 建表/改表 → 更新版本號），當前版本：v3（v3 新增 vocabulary.weight/source 欄位 + api_usage CHECK constraint 擴展）
 - **外鍵關聯** — `api_usage.transcription_id` → `transcriptions.id`，新增表時必須同步建立 index
 
 #### API 用量追蹤
@@ -286,8 +288,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **費用計算** — `src/lib/apiPricing.ts` 提供 `calculateWhisperCostCeiling()` 和 `calculateChatCostCeiling()` 純函式
 - **費用上限原則** — 一律取較貴的費率計算（如 LLM 取 output token 價格 $0.79/M），確保是費用上限而非精確值
 - **Whisper 最低計費** — 不足 10 秒一律按 10 秒算（Groq 計費規則）
-- **api_usage 表** — 每次 API 呼叫存一筆記錄（`whisper` / `chat`），由 `useVoiceFlowStore` 在轉錄/AI 整理完成後透過 `useHistoryStore` 寫入
-- **型別** — `ApiUsageRecord`, `ChatUsageData`, `EnhanceResult`, `DailyUsageTrend`（定義在 `src/types/transcription.ts`）
+- **api_usage 表** — 每次 API 呼叫存一筆記錄（`whisper` / `chat` / `vocabulary_analysis`），由 `useVoiceFlowStore` 在轉錄/AI 整理/字典分析完成後透過 `useHistoryStore` 寫入
+- **型別** — `ApiUsageRecord`, `ChatUsageData`, `EnhanceResult`, `DailyUsageTrend`, `ApiType = "whisper" | "chat" | "vocabulary_analysis"`（定義在 `src/types/transcription.ts`）
 
 ### Testing Rules
 
@@ -323,6 +325,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `NotchHud.test.ts`（component） | HUD 元件 6 態顯示 |
 | `i18n-settings.test.ts` | 語言偵測、locale 儲存/載入、Whisper code 映射、prompt 連動、翻譯檔 key 一致性 |
 | `AccessibilityGuide.test.ts`（component） | 輔助使用權限引導 |
+| `use-vocabulary-store.test.ts` | 字典 CRUD + 權重 + AI 推薦詞 + getTopTermListByWeight |
+| `vocabulary-analyzer.test.ts` | AI 分析回傳解析（正常 JSON、空陣列、非 JSON） |
 | `i18n-smoke.test.ts`（component） | mount View + 切換 locale + 斷言 UI 文字切換 |
 | `smoke.test.ts`（e2e） | 端對端冒煙測試 |
 
@@ -395,6 +399,7 @@ src/
 │   └── useAudioWaveform.ts  # 音訊波形視覺化（Tauri Event push 模式）
 ├── lib/                  # Service 層（純邏輯，無 Vue 依賴）
 │   ├── enhancer.ts          # Groq LLM AI 整理
+│   ├── vocabularyAnalyzer.ts # Groq LLM 字典分析（修正偵測後 AI 差異比對）
 │   ├── database.ts          # SQLite 初始化 + migration
 │   ├── autoUpdater.ts       # tauri-plugin-updater 封裝（回傳 UpdateCheckResult）
 │   ├── sentry.ts            # Sentry 初始化 + captureError（雙視窗策略）
@@ -407,8 +412,8 @@ src/
 ├── stores/               # Pinia stores
 │   ├── useSettingsStore.ts      # 快捷鍵 / API Key / AI Prompt / 開機啟動 / UI locale / 轉錄 locale / Whisper 語言
 │   ├── useHistoryStore.ts       # 歷史記錄 CRUD + Dashboard 統計 + 分頁
-│   ├── useVocabularyStore.ts    # 詞彙字典 CRUD
-│   └── useVoiceFlowStore.ts     # 錄音/轉錄/AI 整理/貼上完整流程
+│   ├── useVocabularyStore.ts    # 詞彙字典 CRUD + 權重系統 + AI 推薦詞管理
+│   └── useVoiceFlowStore.ts     # 錄音/轉錄/AI 整理/貼上/修正偵測/字典學習完整流程
 ├── views/                # Main Window 頁面
 │   ├── DashboardView.vue    # 統計卡片 + 最近轉錄列表
 │   ├── HistoryView.vue      # 歷史記錄搜尋與管理
@@ -417,7 +422,7 @@ src/
 ├── types/                # TypeScript 型別定義
 │   ├── index.ts             # HudStatus, TriggerMode, HudTargetPosition 等共用型別
 │   ├── transcription.ts     # TranscriptionRecord, DashboardStats, ApiUsageRecord, DailyUsageTrend
-│   ├── vocabulary.ts        # VocabularyEntry
+│   ├── vocabulary.ts        # VocabularyEntry（含 weight, source）
 │   ├── settings.ts          # TriggerKey (含右側修飾鍵: rightOption, rightControl), HotkeyConfig, SettingsDto
 │   ├── events.ts            # 所有 Tauri Event payload 型別
 │   └── audio.ts             # WaveformPayload, StopRecordingResult, TranscriptionResult
@@ -607,4 +612,4 @@ src/
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-03-09 (v5 — TranscriptionLocale 分離、CGEvent Cmd+V 貼上、Sentry captureError 全覆蓋、Prompt in-memory-only auto-switch)
+Last Updated: 2026-03-10 (v6 — 智慧字典學習系統：權重系統、修正偵測、AI 字典分析、HUD 學習通知、text_field_reader AX API)

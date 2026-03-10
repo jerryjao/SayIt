@@ -84,9 +84,18 @@ const {
       selectedLlmModelId: "llama-3.3-70b-versatile",
       selectedWhisperModelId: "whisper-large-v3",
       isMuteOnRecordingEnabled: false,
+      isSmartDictionaryEnabled: false,
     },
     mockVocabularyState: {
-      termList: [] as Array<{ id: string; term: string; createdAt: string }>,
+      termList: [] as Array<{
+        id: string;
+        term: string;
+        weight: number;
+        source: string;
+        createdAt: string;
+      }>,
+      getTopTermListByWeight: vi.fn().mockResolvedValue([]),
+      batchIncrementWeights: vi.fn().mockResolvedValue(undefined),
     },
     mockAddTranscription: vi.fn().mockResolvedValue(undefined),
     mockAddApiUsage: vi.fn().mockResolvedValue(undefined),
@@ -142,6 +151,13 @@ vi.mock("../../src/lib/apiPricing", () => ({
   calculateChatCostCeiling: vi.fn(() => 0.000118),
 }));
 
+vi.mock("../../src/lib/vocabularyAnalyzer", () => ({
+  analyzeCorrections: vi.fn().mockResolvedValue({
+    suggestedTermList: [],
+    usage: null,
+  }),
+}));
+
 vi.mock("../../src/lib/sentry", () => ({
   captureError: vi.fn(),
 }));
@@ -169,6 +185,9 @@ vi.mock("../../src/stores/useSettingsStore", () => ({
     get isMuteOnRecordingEnabled() {
       return mockSettingsState.isMuteOnRecordingEnabled;
     },
+    get isSmartDictionaryEnabled() {
+      return mockSettingsState.isSmartDictionaryEnabled;
+    },
     getWhisperLanguageCode: () => "zh",
   }),
 }));
@@ -176,6 +195,8 @@ vi.mock("../../src/stores/useSettingsStore", () => ({
 vi.mock("../../src/stores/useVocabularyStore", () => ({
   useVocabularyStore: () => ({
     termList: mockVocabularyState.termList,
+    getTopTermListByWeight: mockVocabularyState.getTopTermListByWeight,
+    batchIncrementWeights: mockVocabularyState.batchIncrementWeights,
   }),
 }));
 
@@ -268,7 +289,14 @@ describe("useVoiceFlowStore", () => {
     mockSettingsState.selectedLlmModelId = "llama-3.3-70b-versatile";
     mockSettingsState.selectedWhisperModelId = "whisper-large-v3";
     mockSettingsState.isMuteOnRecordingEnabled = false;
+    mockSettingsState.isSmartDictionaryEnabled = false;
     mockVocabularyState.termList = [];
+    mockVocabularyState.getTopTermListByWeight
+      .mockClear()
+      .mockResolvedValue([]);
+    mockVocabularyState.batchIncrementWeights
+      .mockClear()
+      .mockResolvedValue(undefined);
     mockAddTranscription.mockClear().mockResolvedValue(undefined);
     mockAddApiUsage.mockClear().mockResolvedValue(undefined);
     mockGetCurrentWindow.mockClear();
@@ -1061,9 +1089,25 @@ describe("useVoiceFlowStore", () => {
       });
 
       mockVocabularyState.termList = [
-        { id: "1", term: "TypeScript", createdAt: "2026-01-01" },
-        { id: "2", term: "Vue.js", createdAt: "2026-01-01" },
+        {
+          id: "1",
+          term: "TypeScript",
+          weight: 1,
+          source: "manual",
+          createdAt: "2026-01-01",
+        },
+        {
+          id: "2",
+          term: "Vue.js",
+          weight: 1,
+          source: "manual",
+          createdAt: "2026-01-01",
+        },
       ];
+      mockVocabularyState.getTopTermListByWeight.mockResolvedValue([
+        "TypeScript",
+        "Vue.js",
+      ]);
 
       const store = useVoiceFlowStore();
       await store.initialize();
@@ -1135,9 +1179,25 @@ describe("useVoiceFlowStore", () => {
   describe("詞彙注入 Whisper", () => {
     it("[P0] 有詞彙時應將詞彙清單傳入 transcribe_audio", async () => {
       mockVocabularyState.termList = [
-        { id: "1", term: "TypeScript", createdAt: "2026-01-01" },
-        { id: "2", term: "Tauri", createdAt: "2026-01-01" },
+        {
+          id: "1",
+          term: "TypeScript",
+          weight: 1,
+          source: "manual",
+          createdAt: "2026-01-01",
+        },
+        {
+          id: "2",
+          term: "Tauri",
+          weight: 1,
+          source: "manual",
+          createdAt: "2026-01-01",
+        },
       ];
+      mockVocabularyState.getTopTermListByWeight.mockResolvedValue([
+        "TypeScript",
+        "Tauri",
+      ]);
 
       const store = useVoiceFlowStore();
       await store.initialize();
@@ -1207,9 +1267,25 @@ describe("useVoiceFlowStore", () => {
       });
 
       mockVocabularyState.termList = [
-        { id: "1", term: "Pinia", createdAt: "2026-01-01" },
-        { id: "2", term: "Vitest", createdAt: "2026-01-01" },
+        {
+          id: "1",
+          term: "Pinia",
+          weight: 1,
+          source: "manual",
+          createdAt: "2026-01-01",
+        },
+        {
+          id: "2",
+          term: "Vitest",
+          weight: 1,
+          source: "manual",
+          createdAt: "2026-01-01",
+        },
       ];
+      mockVocabularyState.getTopTermListByWeight.mockResolvedValue([
+        "Pinia",
+        "Vitest",
+      ]);
 
       const store = useVoiceFlowStore();
       await store.initialize();

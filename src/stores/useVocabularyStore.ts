@@ -4,13 +4,15 @@ import { getDatabase } from "../lib/database";
 import { extractErrorMessage } from "../lib/errorUtils";
 import { captureError } from "../lib/sentry";
 import { emitEvent, VOCABULARY_CHANGED } from "../composables/useTauriEvents";
-import type { VocabularyEntry } from "../types/vocabulary";
+import type { VocabularyEntry, VocabularySource } from "../types/vocabulary";
 import type { VocabularyChangedPayload } from "../types/events";
 import i18n from "../i18n";
 
 interface RawVocabularyRow {
   id: string;
   term: string;
+  weight: number;
+  source: string;
   created_at: string;
 }
 
@@ -18,6 +20,8 @@ function mapRowToEntry(row: RawVocabularyRow): VocabularyEntry {
   return {
     id: row.id,
     term: row.term,
+    weight: row.weight,
+    source: row.source as VocabularySource,
     createdAt: row.created_at,
   };
 }
@@ -40,7 +44,7 @@ export const useVocabularyStore = defineStore("vocabulary", () => {
     try {
       const db = getDatabase();
       const rows = await db.select<RawVocabularyRow[]>(
-        "SELECT id, term, created_at FROM vocabulary ORDER BY created_at DESC",
+        "SELECT id, term, weight, source, created_at FROM vocabulary ORDER BY weight DESC, created_at DESC",
       );
       termList.value = rows.map(mapRowToEntry);
     } catch (error) {
@@ -65,10 +69,10 @@ export const useVocabularyStore = defineStore("vocabulary", () => {
     const id = crypto.randomUUID();
     try {
       const db = getDatabase();
-      await db.execute("INSERT INTO vocabulary (id, term) VALUES ($1, $2)", [
-        id,
-        trimmedTerm,
-      ]);
+      await db.execute(
+        "INSERT INTO vocabulary (id, term, source) VALUES ($1, $2, 'manual')",
+        [id, trimmedTerm],
+      );
       await fetchTermList();
       void emitEvent(VOCABULARY_CHANGED, {
         action: "added",
@@ -106,13 +110,91 @@ export const useVocabularyStore = defineStore("vocabulary", () => {
     }
   }
 
+  const manualTermList = computed(() =>
+    termList.value.filter((entry) => entry.source === "manual"),
+  );
+
+  const aiSuggestedTermList = computed(() =>
+    termList.value.filter((entry) => entry.source === "ai"),
+  );
+
+  async function addAiSuggestedTerm(term: string) {
+    const trimmedTerm = term.trim();
+    if (!trimmedTerm) return;
+
+    const id = crypto.randomUUID();
+    try {
+      const db = getDatabase();
+      await db.execute(
+        "INSERT INTO vocabulary (id, term, source) VALUES ($1, $2, 'ai')",
+        [id, trimmedTerm],
+      );
+      await fetchTermList();
+      void emitEvent(VOCABULARY_CHANGED, {
+        action: "added",
+        term: trimmedTerm,
+      } satisfies VocabularyChangedPayload);
+    } catch (error) {
+      const message = extractErrorMessage(error);
+      if (message.includes("UNIQUE")) {
+        // 已存在，靜默處理（呼叫端會做 weight +1）
+        return;
+      }
+      console.error(`[vocabulary-store] addAiSuggestedTerm failed: ${message}`);
+      captureError(error, { source: "vocabulary", step: "add-ai" });
+      throw error;
+    }
+  }
+
+  async function batchIncrementWeights(termIdList: string[]) {
+    if (termIdList.length === 0) return;
+    try {
+      const db = getDatabase();
+      for (const id of termIdList) {
+        await db.execute(
+          "UPDATE vocabulary SET weight = weight + 1 WHERE id = $1",
+          [id],
+        );
+      }
+      await fetchTermList();
+    } catch (error) {
+      console.error(
+        `[vocabulary-store] batchIncrementWeights failed: ${extractErrorMessage(error)}`,
+      );
+      captureError(error, { source: "vocabulary", step: "increment-weights" });
+      throw error;
+    }
+  }
+
+  async function getTopTermListByWeight(limit: number): Promise<string[]> {
+    try {
+      const db = getDatabase();
+      const rows = await db.select<{ term: string }[]>(
+        "SELECT term FROM vocabulary ORDER BY weight DESC, created_at DESC LIMIT $1",
+        [limit],
+      );
+      return rows.map((row) => row.term);
+    } catch (error) {
+      console.error(
+        `[vocabulary-store] getTopTermListByWeight failed: ${extractErrorMessage(error)}`,
+      );
+      captureError(error, { source: "vocabulary", step: "top-by-weight" });
+      return [];
+    }
+  }
+
   return {
     termList,
     isLoading,
     termCount,
+    manualTermList,
+    aiSuggestedTermList,
     isDuplicateTerm,
     fetchTermList,
     addTerm,
+    addAiSuggestedTerm,
+    batchIncrementWeights,
+    getTopTermListByWeight,
     removeTerm,
   };
 });

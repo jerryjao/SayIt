@@ -94,6 +94,73 @@ export async function initializeDatabase(): Promise<Database> {
     console.log("[database] Migration v1 → v2: created api_usage table");
   }
 
+  // --- Migration v2 → v3: vocabulary weight/source + api_usage CHECK expansion ---
+  const v3VersionRows = await connection.select<{ version: number }[]>(
+    "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
+  );
+  const v3CurrentVersion = v3VersionRows[0]?.version ?? 1;
+
+  if (v3CurrentVersion < 3) {
+    await connection.execute("BEGIN TRANSACTION;");
+    try {
+      // vocabulary 表新增 weight + source 欄位
+      await connection.execute(
+        "ALTER TABLE vocabulary ADD COLUMN weight INTEGER NOT NULL DEFAULT 1;",
+      );
+      await connection.execute(
+        "ALTER TABLE vocabulary ADD COLUMN source TEXT NOT NULL DEFAULT 'manual';",
+      );
+      await connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_vocabulary_weight ON vocabulary(weight DESC);",
+      );
+
+      // api_usage 表重建（擴展 CHECK constraint 加入 'vocabulary_analysis'）
+      // SQLite 不支援 ALTER CONSTRAINT，必須重建
+      await connection.execute(`
+        CREATE TABLE api_usage_new (
+          id TEXT PRIMARY KEY,
+          transcription_id TEXT NOT NULL,
+          api_type TEXT NOT NULL CHECK(api_type IN ('whisper', 'chat', 'vocabulary_analysis')),
+          model TEXT NOT NULL,
+          prompt_tokens INTEGER,
+          completion_tokens INTEGER,
+          total_tokens INTEGER,
+          prompt_time_ms REAL,
+          completion_time_ms REAL,
+          total_time_ms REAL,
+          audio_duration_ms INTEGER,
+          estimated_cost_ceiling REAL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (transcription_id) REFERENCES transcriptions(id)
+        );
+      `);
+      await connection.execute(
+        "INSERT INTO api_usage_new SELECT * FROM api_usage;",
+      );
+      await connection.execute("DROP TABLE api_usage;");
+      await connection.execute(
+        "ALTER TABLE api_usage_new RENAME TO api_usage;",
+      );
+      await connection.execute(`
+        CREATE INDEX IF NOT EXISTS idx_api_usage_transcription_id
+        ON api_usage(transcription_id);
+      `);
+
+      await connection.execute(
+        "INSERT OR REPLACE INTO schema_version (version) VALUES (3);",
+      );
+
+      await connection.execute("COMMIT;");
+    } catch (migrationError) {
+      await connection.execute("ROLLBACK;");
+      throw migrationError;
+    }
+
+    console.log(
+      "[database] Migration v2 → v3: vocabulary weight/source + api_usage CHECK expansion",
+    );
+  }
+
   // 只有全部 schema 建立成功才設定 singleton
   db = connection;
   console.log("[database] SQLite initialized with WAL mode");
