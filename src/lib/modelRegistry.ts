@@ -3,7 +3,6 @@
 export type LlmModelId =
   | "llama-3.3-70b-versatile"
   | "meta-llama/llama-4-scout-17b-16e-instruct"
-  | "meta-llama/llama-4-maverick-17b-128e-instruct"
   | "qwen/qwen3-32b";
 
 export interface LlmModelConfig {
@@ -44,8 +43,8 @@ export const DECOMMISSIONED_MODEL_MAP: Record<string, LlmModelId> = {
   "openai/gpt-oss-20b": "qwen/qwen3-32b",
   "llama-3.1-8b-instant": "qwen/qwen3-32b",
   "llama-4-scout-17b-16e-instruct": "meta-llama/llama-4-scout-17b-16e-instruct",
-  "llama-4-maverick-17b-128e-instruct":
-    "meta-llama/llama-4-maverick-17b-128e-instruct",
+  "llama-4-maverick-17b-128e-instruct": "qwen/qwen3-32b",
+  "meta-llama/llama-4-maverick-17b-128e-instruct": "qwen/qwen3-32b",
 };
 
 // ── 模型清單（Groq 2026-03 價格）─────────────────────────
@@ -67,16 +66,6 @@ export const LLM_MODEL_LIST: LlmModelConfig[] = [
     speedTps: 750,
     inputCostPerMillion: 0.11,
     outputCostPerMillion: 0.34,
-    freeQuotaRpd: 1_000,
-    freeQuotaTpd: 500_000,
-    isDefault: false,
-  },
-  {
-    id: "meta-llama/llama-4-maverick-17b-128e-instruct",
-    displayName: "Llama 4 Maverick 17B",
-    speedTps: 562,
-    inputCostPerMillion: 0.2,
-    outputCostPerMillion: 0.6,
     freeQuotaRpd: 1_000,
     freeQuotaTpd: 500_000,
     isDefault: false,
