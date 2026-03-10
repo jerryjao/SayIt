@@ -2,6 +2,18 @@
 
 SayIt 版本更新紀錄。
 
+## [0.7.2](https://github.com/chenjackle45/SayIt/releases/tag/v0.7.2) - 2026-03-11
+
+### Added
+
+- 字典分析模型獨立設定：文字整理與字典分析可分別選用最適合的 AI 模型
+- 新增 Kimi K2 Instruct 模型選項（文字整理 + 字典分析皆可選）
+- 模型下拉選單新增特色標籤（平衡 · 預設 / 穩定可靠 · 成本高 / 最快 · 最便宜 / 最聰明 · 較慢）
+
+### Fixed
+
+- 修復模型下拉選單選中後 Badge 文字與模型名稱黏在一起的問題
+
 ## [0.7.1](https://github.com/chenjackle45/SayIt/releases/tag/v0.7.1) - 2026-03-10
 
 ### Fixed
