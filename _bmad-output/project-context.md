@@ -82,8 +82,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ### External APIs
 
 - Groq Whisper API — `https://api.groq.com/openai/v1/audio/transcriptions`（預設模型：`whisper-large-v3`，語言：由 `getWhisperLanguageCode()` 回傳 `string | null`（auto 模式回傳 `null` 表示 Whisper 自動偵測），Rust fallback `"zh"`，可選 `whisper-large-v3-turbo`）
-- Groq LLM API — `https://api.groq.com/openai/v1/chat/completions`（預設模型：`llama-3.3-70b-versatile`，支援 7 個模型切換，temperature: 0.3，timeout: 5s）
-- **模型註冊** — `src/lib/modelRegistry.ts` 集中管理所有可用模型、價格、免費配額，支援模型下架自動遷移（`DECOMMISSIONED_MODEL_MAP`）
+- Groq LLM API — `https://api.groq.com/openai/v1/chat/completions`，兩個獨立模型設定：
+  - **文字整理**（enhancer）：預設 `qwen/qwen3-32b`，可選 Llama 3.3 70B / Llama 4 Scout 17B / Kimi K2 Instruct，temperature: 0.3，timeout: 5s
+  - **字典分析**（vocabularyAnalyzer）：預設 `llama-3.3-70b-versatile`，可選 Kimi K2 Instruct，temperature: 0，max_tokens: 256
+- **模型註冊** — `src/lib/modelRegistry.ts` 集中管理所有可用模型（`LLM_MODEL_LIST` + `VOCABULARY_ANALYSIS_MODEL_LIST`）、價格、免費配額、Badge 標籤（`badgeKey`），支援模型下架自動遷移（`DECOMMISSIONED_MODEL_MAP`）
 - CSP 白名單：`connect-src 'self' https://api.groq.com`
 
 ### Sentry/Telemetry 整合
@@ -403,14 +405,14 @@ src/
 │   ├── database.ts          # SQLite 初始化 + migration
 │   ├── autoUpdater.ts       # tauri-plugin-updater 封裝（回傳 UpdateCheckResult）
 │   ├── sentry.ts            # Sentry 初始化 + captureError（雙視窗策略）
-│   ├── modelRegistry.ts     # LLM/Whisper 模型註冊、價格、下架遷移
+│   ├── modelRegistry.ts     # LLM/Whisper/字典分析 模型註冊、價格、Badge、下架遷移
 │   ├── keycodeMap.ts        # DOM event.code → 平台原生 keycode 映射
 │   ├── errorUtils.ts        # 錯誤訊息本地化（繁體中文）
 │   ├── formatUtils.ts       # 時間/文字格式化工具
 │   ├── apiPricing.ts        # API 費用上限計算（Whisper + LLM）
 │   └── utils.ts             # cn() shadcn-vue 工具函式
 ├── stores/               # Pinia stores
-│   ├── useSettingsStore.ts      # 快捷鍵 / API Key / AI Prompt / 開機啟動 / UI locale / 轉錄 locale / Whisper 語言
+│   ├── useSettingsStore.ts      # 快捷鍵 / API Key / AI Prompt / 開機啟動 / UI locale / 轉錄 locale / Whisper 語言 / 字典分析模型
 │   ├── useHistoryStore.ts       # 歷史記錄 CRUD + Dashboard 統計 + 分頁
 │   ├── useVocabularyStore.ts    # 詞彙字典 CRUD + 權重系統 + AI 推薦詞管理
 │   └── useVoiceFlowStore.ts     # 錄音/轉錄/AI 整理/貼上/修正偵測/字典學習完整流程
