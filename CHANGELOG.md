@@ -2,6 +2,12 @@
 
 SayIt 版本更新紀錄。
 
+## [0.7.1](https://github.com/chenjackle45/SayIt/releases/tag/v0.7.1) - 2026-03-10
+
+### Fixed
+
+- 移除已下架的 Llama 4 Maverick 17B 模型選項（Groq 已停用），已選用的使用者自動遷移至 Qwen3 32B
+
 ## [0.7.0](https://github.com/chenjackle45/SayIt/releases/tag/v0.7.0) - 2026-03-10
 
 ### 智慧字典學習
