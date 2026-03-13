@@ -2,6 +2,13 @@
 
 SayIt 版本更新紀錄。
 
+## [0.7.3](https://github.com/chenjackle45/SayIt/releases/tag/v0.7.3) - 2026-03-13
+
+### Fixed
+
+- 修復英文語句含重複冠詞（the、and 等）被誤判為「未偵測到語音」的問題
+- 移除 Whisper 幻聽攔截機制，非空轉錄結果一律貼上，讓使用者自行判斷模型輸出品質
+
 ## [0.7.2](https://github.com/chenjackle45/SayIt/releases/tag/v0.7.2) - 2026-03-11
 
 ### Added
