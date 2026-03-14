@@ -65,7 +65,7 @@ development_status:
   4-2-history-browse-search-copy: done
   4-3-dashboard-stats-recent-summary: done
   4-4-recording-storage-history-playback: done
-  4-5-transcription-retry-resend: backlog
+  4-5-transcription-retry-resend: done
   epic-4-retrospective: optional
 
   epic-5: done

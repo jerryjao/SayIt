@@ -78,16 +78,29 @@ describe("NotchHud", () => {
     expect(wrapper.findAll(".waveform-converge").length).toBe(6);
   });
 
-  it("[P0] error 狀態無 message 應顯示 scatter dots 和 retry icon", () => {
+  it("[P0] error 狀態無 message 且 canRetry=true 應顯示 scatter dots 和 retry icon", () => {
     const wrapper = mountNotchHud({
       status: "error",
       recordingElapsedSeconds: 0,
       message: "",
+      canRetry: true,
     });
 
     expect(wrapper.findAll(".waveform-scatter").length).toBe(6);
     expect(wrapper.find(".retry-icon").exists()).toBe(true);
     expect(wrapper.find(".error-message").exists()).toBe(false);
+  });
+
+  it("[P0] error 狀態 canRetry=false 不應顯示 retry icon", () => {
+    const wrapper = mountNotchHud({
+      status: "error",
+      recordingElapsedSeconds: 0,
+      message: "",
+      canRetry: false,
+    });
+
+    expect(wrapper.findAll(".waveform-scatter").length).toBe(6);
+    expect(wrapper.find(".retry-icon").exists()).toBe(false);
   });
 
   it("[P0] error 狀態有 message 應在瀏海下方顯示錯誤訊息", () => {
@@ -123,6 +136,7 @@ describe("NotchHud", () => {
       status: "error",
       recordingElapsedSeconds: 0,
       message: "",
+      canRetry: true,
     });
 
     await wrapper.find(".retry-icon").trigger("click");

@@ -314,6 +314,113 @@ describe("useHistoryStore", () => {
   });
 
   // ==========================================================================
+  // updateTranscriptionOnRetrySuccess
+  // ==========================================================================
+
+  describe("updateTranscriptionOnRetrySuccess", () => {
+    it("[P0] 應執行 UPDATE SQL 並將 boolean 轉為 INTEGER", async () => {
+      const { useHistoryStore } = await import(
+        "../../src/stores/useHistoryStore"
+      );
+      const store = useHistoryStore();
+
+      await store.updateTranscriptionOnRetrySuccess({
+        id: "test-uuid-001",
+        rawText: "重送成功的文字",
+        processedText: "AI 整理後的文字",
+        transcriptionDurationMs: 350,
+        enhancementDurationMs: 200,
+        wasEnhanced: true,
+        charCount: 8,
+      });
+
+      expect(mockDbExecute).toHaveBeenCalledTimes(1);
+      const [sql, params] = mockDbExecute.mock.calls[0];
+      expect(sql).toContain("UPDATE transcriptions");
+      expect(sql).toContain("SET status = 'success'");
+      expect(params).toEqual([
+        "重送成功的文字",
+        "AI 整理後的文字",
+        350,
+        200,
+        1, // wasEnhanced: true → 1
+        8,
+        "test-uuid-001",
+      ]);
+    });
+
+    it("[P0] wasEnhanced=false 應轉為 0", async () => {
+      const { useHistoryStore } = await import(
+        "../../src/stores/useHistoryStore"
+      );
+      const store = useHistoryStore();
+
+      await store.updateTranscriptionOnRetrySuccess({
+        id: "test-uuid-002",
+        rawText: "原始文字",
+        processedText: null,
+        transcriptionDurationMs: 300,
+        enhancementDurationMs: null,
+        wasEnhanced: false,
+        charCount: 4,
+      });
+
+      const params = mockDbExecute.mock.calls[0][1];
+      expect(params[4]).toBe(0);
+    });
+
+    it("[P0] UPDATE 成功後應發送 transcription:completed 事件至 main-window", async () => {
+      const { useHistoryStore } = await import(
+        "../../src/stores/useHistoryStore"
+      );
+      const store = useHistoryStore();
+
+      await store.updateTranscriptionOnRetrySuccess({
+        id: "test-uuid-003",
+        rawText: "重送文字",
+        processedText: "整理後文字",
+        transcriptionDurationMs: 400,
+        enhancementDurationMs: 150,
+        wasEnhanced: true,
+        charCount: 5,
+      });
+
+      expect(mockEmitTo).toHaveBeenCalledTimes(1);
+      expect(mockEmitTo).toHaveBeenCalledWith(
+        "main-window",
+        "transcription:completed",
+        expect.objectContaining({
+          id: "test-uuid-003",
+          rawText: "重送文字",
+          processedText: "整理後文字",
+          wasEnhanced: true,
+        }),
+      );
+    });
+
+    it("[P0] SQL UPDATE 失敗應拋出錯誤", async () => {
+      mockDbExecute.mockRejectedValueOnce(new Error("SQLITE_ERROR"));
+
+      const { useHistoryStore } = await import(
+        "../../src/stores/useHistoryStore"
+      );
+      const store = useHistoryStore();
+
+      await expect(
+        store.updateTranscriptionOnRetrySuccess({
+          id: "test-uuid-004",
+          rawText: "測試",
+          processedText: null,
+          transcriptionDurationMs: 200,
+          enhancementDurationMs: null,
+          wasEnhanced: false,
+          charCount: 2,
+        }),
+      ).rejects.toThrow("SQLITE_ERROR");
+    });
+  });
+
+  // ==========================================================================
   // fetchDashboardStats
   // ==========================================================================
 

@@ -16,6 +16,7 @@ const {
   mockSettingsState,
   mockVocabularyState,
   mockAddTranscription,
+  mockUpdateTranscriptionOnRetrySuccess,
   mockAddApiUsage,
   listenerCallbackMap,
   unlistenFunctionList,
@@ -99,6 +100,7 @@ const {
       batchIncrementWeights: vi.fn().mockResolvedValue(undefined),
     },
     mockAddTranscription: vi.fn().mockResolvedValue(undefined),
+    mockUpdateTranscriptionOnRetrySuccess: vi.fn().mockResolvedValue(undefined),
     mockAddApiUsage: vi.fn().mockResolvedValue(undefined),
     listenerCallbackMap,
     unlistenFunctionList,
@@ -204,6 +206,7 @@ vi.mock("../../src/stores/useVocabularyStore", () => ({
 vi.mock("../../src/stores/useHistoryStore", () => ({
   useHistoryStore: () => ({
     addTranscription: mockAddTranscription,
+    updateTranscriptionOnRetrySuccess: mockUpdateTranscriptionOnRetrySuccess,
     addApiUsage: mockAddApiUsage,
   }),
 }));
@@ -237,6 +240,8 @@ const DEFAULT_TRANSCRIBE_RESULT = {
 function createMockInvokeHandler(options?: {
   transcribeResult?: unknown;
   transcribeError?: Error;
+  retranscribeResult?: unknown;
+  retranscribeError?: Error;
   stopRecordingResult?: {
     recordingDurationMs: number;
   };
@@ -255,6 +260,14 @@ function createMockInvokeHandler(options?: {
           return options.transcribeResult instanceof Promise
             ? await options.transcribeResult
             : options.transcribeResult;
+        }
+        return DEFAULT_TRANSCRIBE_RESULT;
+      case "retranscribe_from_file":
+        if (options?.retranscribeError) throw options.retranscribeError;
+        if (options?.retranscribeResult !== undefined) {
+          return options.retranscribeResult instanceof Promise
+            ? await options.retranscribeResult
+            : options.retranscribeResult;
         }
         return DEFAULT_TRANSCRIBE_RESULT;
       case "get_hud_target_position":
@@ -302,6 +315,9 @@ describe("useVoiceFlowStore", () => {
       .mockClear()
       .mockResolvedValue(undefined);
     mockAddTranscription.mockClear().mockResolvedValue(undefined);
+    mockUpdateTranscriptionOnRetrySuccess
+      .mockClear()
+      .mockResolvedValue(undefined);
     mockAddApiUsage.mockClear().mockResolvedValue(undefined);
     mockGetCurrentWindow.mockClear();
     mockWebviewWindowGetByLabel.mockClear();
@@ -1841,6 +1857,217 @@ describe("useVoiceFlowStore", () => {
 
       const whisperRecord = mockAddApiUsage.mock.calls[0][0];
       expect(whisperRecord.apiType).toBe("whisper");
+    });
+  });
+
+  // ==========================================================================
+  // 重送轉錄 (Story 4.5)
+  // ==========================================================================
+
+  describe("重送轉錄", () => {
+    async function setupFailedTranscription(
+      store: ReturnType<typeof useVoiceFlowStore>,
+    ) {
+      // 模擬空轉錄結果觸發失敗
+      mockInvoke.mockImplementation(
+        createMockInvokeHandler({
+          transcribeResult: {
+            rawText: "",
+            transcriptionDurationMs: 280,
+            noSpeechProbability: 0.95,
+          },
+        }),
+      );
+
+      triggerHotkeyEvent("hotkey:pressed");
+      await vi.waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("start_recording");
+      });
+
+      triggerHotkeyEvent("hotkey:released");
+      await vi.waitFor(() => {
+        expect(store.status).toBe("error");
+      });
+    }
+
+    it("[P0] 空轉錄失敗後 canRetry 應為 true", async () => {
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      await setupFailedTranscription(store);
+
+      expect(store.canRetry).toBe(true);
+    });
+
+    it("[P0] 重送成功應呼叫 retranscribe_from_file、paste_text，並更新 DB", async () => {
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      await setupFailedTranscription(store);
+      expect(store.canRetry).toBe(true);
+
+      // 重新設定 mock 讓重送成功
+      mockInvoke.mockImplementation(
+        createMockInvokeHandler({
+          retranscribeResult: {
+            rawText: "重送成功的文字",
+            transcriptionDurationMs: 350,
+            noSpeechProbability: 0.02,
+          },
+        }),
+      );
+
+      await store.handleRetryTranscription();
+
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "retranscribe_from_file",
+        expect.objectContaining({
+          filePath: "/mock/recordings/test.wav",
+          apiKey: "test-api-key-123",
+        }),
+      );
+
+      await vi.waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("paste_text", {
+          text: "重送成功的文字",
+        });
+      });
+
+      expect(store.status).toBe("success");
+      expect(store.canRetry).toBe(false);
+
+      // DB 應被 UPDATE
+      await vi.waitFor(() => {
+        expect(mockUpdateTranscriptionOnRetrySuccess).toHaveBeenCalledTimes(1);
+      });
+      const updateParams =
+        mockUpdateTranscriptionOnRetrySuccess.mock.calls[0][0];
+      expect(updateParams.rawText).toBe("重送成功的文字");
+      expect(updateParams.processedText).toBeNull();
+    });
+
+    it("[P0] 重送失敗（空轉錄）不再提供重送按鈕", async () => {
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      await setupFailedTranscription(store);
+      expect(store.canRetry).toBe(true);
+
+      // 重送也回傳空白
+      mockInvoke.mockImplementation(
+        createMockInvokeHandler({
+          retranscribeResult: {
+            rawText: "",
+            transcriptionDurationMs: 300,
+            noSpeechProbability: 0.98,
+          },
+        }),
+      );
+
+      await store.handleRetryTranscription();
+
+      expect(store.status).toBe("error");
+      expect(store.message).toBe("voiceFlow.retryFailed");
+      expect(store.canRetry).toBe(false);
+    });
+
+    it("[P0] 錄音太短不啟用重送", async () => {
+      mockInvoke.mockImplementation(
+        createMockInvokeHandler({
+          stopRecordingResult: { recordingDurationMs: 100 },
+        }),
+      );
+
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      triggerHotkeyEvent("hotkey:pressed");
+      await vi.waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("start_recording");
+      });
+
+      triggerHotkeyEvent("hotkey:released");
+      await vi.waitFor(() => {
+        expect(store.status).toBe("error");
+      });
+
+      expect(store.canRetry).toBe(false);
+    });
+
+    it("[P0] canRetry 在非 error 狀態下應為 false", async () => {
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      // idle 狀態
+      expect(store.canRetry).toBe(false);
+
+      // recording 狀態
+      store.transitionTo("recording");
+      expect(store.canRetry).toBe(false);
+    });
+
+    it("[P0] 新錄音開始時應重置重送狀態", async () => {
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      await setupFailedTranscription(store);
+      expect(store.canRetry).toBe(true);
+
+      // 重新設定 mock 讓新錄音正常
+      mockInvoke.mockImplementation(createMockInvokeHandler());
+
+      // 開始新錄音
+      triggerHotkeyEvent("hotkey:pressed");
+      await vi.waitFor(() => {
+        expect(store.status).toBe("recording");
+      });
+
+      // canRetry 應被重置
+      expect(store.canRetry).toBe(false);
+    });
+
+    it("[P0] API 錯誤失敗後 canRetry 應為 true", async () => {
+      mockInvoke.mockImplementation(
+        createMockInvokeHandler({
+          transcribeError: new Error("Groq API error (500)"),
+        }),
+      );
+
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      triggerHotkeyEvent("hotkey:pressed");
+      await vi.waitFor(() => {
+        expect(mockInvoke).toHaveBeenCalledWith("start_recording");
+      });
+
+      triggerHotkeyEvent("hotkey:released");
+      await vi.waitFor(() => {
+        expect(store.status).toBe("error");
+      });
+
+      expect(store.canRetry).toBe(true);
+    });
+
+    it("[P0] 重送 API 錯誤不再提供重送按鈕", async () => {
+      const store = useVoiceFlowStore();
+      await store.initialize();
+
+      await setupFailedTranscription(store);
+      expect(store.canRetry).toBe(true);
+
+      // 重送也拋出錯誤
+      mockInvoke.mockImplementation(
+        createMockInvokeHandler({
+          retranscribeError: new Error("Groq API error (503)"),
+        }),
+      );
+
+      await store.handleRetryTranscription();
+
+      expect(store.status).toBe("error");
+      expect(store.message).toBe("voiceFlow.retryFailed");
+      expect(store.canRetry).toBe(false);
     });
   });
 

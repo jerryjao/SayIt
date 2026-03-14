@@ -223,7 +223,8 @@
     "recordingTooShort": "錄音時間太短",
     "vocabularyLearnedLabel": "新增字典",
     "vocabularyLearned": "{terms}",
-    "vocabularyLearnedTruncated": "{terms} 等 {count} 個"
+    "vocabularyLearnedTruncated": "{terms} 等 {count} 個",
+    "retryFailed": "辨識失敗，請重新錄音"
   },
   "errors": {
     "apiKeyEmpty": "API Key 不可為空白",

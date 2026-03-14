@@ -136,6 +136,18 @@ const DAILY_USAGE_TREND_SQL = `
   LIMIT $2
 `;
 
+const UPDATE_ON_RETRY_SUCCESS_SQL = `
+  UPDATE transcriptions
+  SET status = 'success',
+      raw_text = $1,
+      processed_text = $2,
+      transcription_duration_ms = $3,
+      enhancement_duration_ms = $4,
+      was_enhanced = $5,
+      char_count = $6
+  WHERE id = $7
+`;
+
 const SELECT_RECENT_SQL = `
   SELECT id, timestamp, raw_text, processed_text,
          recording_duration_ms, transcription_duration_ms, enhancement_duration_ms,
@@ -459,6 +471,55 @@ export const useHistoryStore = defineStore("history", () => {
     );
   }
 
+  async function updateTranscriptionOnRetrySuccess(params: {
+    id: string;
+    rawText: string;
+    processedText: string | null;
+    transcriptionDurationMs: number;
+    enhancementDurationMs: number | null;
+    wasEnhanced: boolean;
+    charCount: number;
+  }): Promise<void> {
+    const db = getDatabase();
+    try {
+      await db.execute(UPDATE_ON_RETRY_SUCCESS_SQL, [
+        params.rawText,
+        params.processedText,
+        params.transcriptionDurationMs,
+        params.enhancementDurationMs,
+        params.wasEnhanced ? 1 : 0,
+        params.charCount,
+        params.id,
+      ]);
+    } catch (err) {
+      console.error(
+        `[useHistoryStore] updateTranscriptionOnRetrySuccess failed: ${extractErrorMessage(err)}`,
+      );
+      captureError(err, { source: "history", step: "update-retry-success" });
+      throw err;
+    }
+
+    try {
+      const payload: TranscriptionCompletedPayload = {
+        id: params.id,
+        rawText: params.rawText,
+        processedText: params.processedText,
+        recordingDurationMs: 0,
+        transcriptionDurationMs: params.transcriptionDurationMs,
+        enhancementDurationMs: params.enhancementDurationMs,
+        charCount: params.charCount,
+        wasEnhanced: params.wasEnhanced,
+      };
+      await emitToWindow("main-window", TRANSCRIPTION_COMPLETED, payload);
+    } catch (emitErr) {
+      console.error(
+        "[useHistoryStore] emitToWindow failed (UPDATE succeeded):",
+        emitErr,
+      );
+      captureError(emitErr, { source: "history", step: "update-retry-emit" });
+    }
+  }
+
   async function deleteAllRecordingFiles(): Promise<number> {
     const deletedCount = await invoke<number>("delete_all_recordings");
     await clearAllAudioFilePath();
@@ -479,6 +540,7 @@ export const useHistoryStore = defineStore("history", () => {
     resetAndFetch,
     loadMore,
     addTranscription,
+    updateTranscriptionOnRetrySuccess,
     addApiUsage,
     fetchDashboardStats,
     fetchRecentTranscriptionList,

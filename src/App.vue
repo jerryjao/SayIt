@@ -67,15 +67,8 @@ onMounted(async () => {
   await appWindow.hide();
 });
 
-async function handleRetry() {
-  try {
-    const mainWindow = await Window.getByLabel("main-window");
-    if (!mainWindow) return;
-    await mainWindow.show();
-    await mainWindow.setFocus();
-  } catch (err) {
-    console.error("[App] handleRetry: show main-window failed:", err);
-  }
+function handleRetry() {
+  void voiceFlowStore.handleRetryTranscription();
 }
 
 onUnmounted(() => {
@@ -91,6 +84,7 @@ onUnmounted(() => {
       :status="voiceFlowStore.status"
       :message="voiceFlowStore.message"
       :recording-elapsed-seconds="voiceFlowStore.recordingElapsedSeconds"
+      :can-retry="voiceFlowStore.canRetry"
       @retry="handleRetry"
     />
   </div>

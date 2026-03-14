@@ -431,6 +431,7 @@ pub fn run() {
             plugins::audio_recorder::delete_all_recordings,
             plugins::audio_recorder::cleanup_old_recordings,
             plugins::transcription::transcribe_audio,
+            plugins::transcription::retranscribe_from_file,
             plugins::sound_feedback::play_start_sound,
             plugins::sound_feedback::play_stop_sound,
             plugins::sound_feedback::play_learned_sound

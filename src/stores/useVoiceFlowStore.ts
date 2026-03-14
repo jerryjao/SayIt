@@ -3,7 +3,7 @@ import { LogicalPosition } from "@tauri-apps/api/dpi";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { Window, getCurrentWindow } from "@tauri-apps/api/window";
 import { defineStore } from "pinia";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import {
   extractErrorMessage,
   getEnhancementErrorMessage,
@@ -88,6 +88,17 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   let delayedMuteTimer: ReturnType<typeof setTimeout> | null = null;
   let learnedHideTimer: ReturnType<typeof setTimeout> | null = null;
   const LEARNED_NOTIFICATION_TOTAL_DURATION_MS = 2800; // 2000 display + 400 collapse + 400 buffer
+  const lastFailedTranscriptionId = ref<string | null>(null);
+  const lastFailedAudioFilePath = ref<string | null>(null);
+  const lastFailedRecordingDurationMs = ref<number>(0);
+  const isRetryAttempt = ref<boolean>(false);
+  const canRetry = computed<boolean>(
+    () =>
+      status.value === "error" &&
+      lastFailedAudioFilePath.value !== null &&
+      !isRetryAttempt.value,
+  );
+
   let lastMonitorKey = "";
   let isRepositioning = false;
 
@@ -686,6 +697,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     successMessage: string;
     record: TranscriptionRecord;
     chatUsage: ChatUsageData | null;
+    skipRecordSaving?: boolean;
   }) {
     try {
       await invoke("paste_text", { text: params.text });
@@ -693,9 +705,12 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       transitionTo("success", params.successMessage);
       startQualityMonitorAfterPaste();
       // api_usage FK 依賴 transcriptions — 必須等 transcription 寫入後才存 usage
-      void saveTranscriptionRecord(params.record).then(() => {
-        saveApiUsageRecordList(params.record, params.chatUsage);
-      });
+      // retry 路徑使用 updateTranscriptionOnRetrySuccess，不走 INSERT
+      if (!params.skipRecordSaving) {
+        void saveTranscriptionRecord(params.record).then(() => {
+          saveApiUsageRecordList(params.record, params.chatUsage);
+        });
+      }
 
       // 權重更新（fire-and-forget）
       const finalText = params.record.processedText ?? params.record.rawText;
@@ -778,6 +793,12 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     if (isRecording.value) return;
     isRecording.value = true;
     lastWasModified.value = null;
+
+    // 重置重送狀態（新錄音開始時清除上次失敗的重送資訊）
+    lastFailedTranscriptionId.value = null;
+    lastFailedAudioFilePath.value = null;
+    lastFailedRecordingDurationMs.value = 0;
+    isRetryAttempt.value = false;
 
     try {
       void invoke("play_start_sound").catch(() => {});
@@ -901,6 +922,13 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
           status: "failed",
         });
         void saveTranscriptionRecord(failedRecord);
+
+        // 設定重送狀態（空轉錄：主要重送目標）
+        if (audioFilePath) {
+          lastFailedTranscriptionId.value = transcriptionId;
+          lastFailedAudioFilePath.value = audioFilePath;
+          lastFailedRecordingDurationMs.value = recordingDurationMs;
+        }
 
         failRecordingFlow(
           t("voiceFlow.noSpeechDetected"),
@@ -1029,6 +1057,11 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
           status: "failed",
         });
         void saveTranscriptionRecord(failedRecord);
+
+        // 設定重送狀態（API 錯誤：暫時性問題，重送有意義）
+        lastFailedTranscriptionId.value = transcriptionId;
+        lastFailedAudioFilePath.value = audioFilePath;
+        lastFailedRecordingDurationMs.value = recordingDurationMs;
       }
 
       const userMessage = getTranscriptionErrorMessage(error);
@@ -1038,6 +1071,241 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         `useVoiceFlowStore: stop recording failed: ${technicalMessage}`,
         error,
       );
+    }
+  }
+
+  async function handleRetryTranscription() {
+    if (!lastFailedAudioFilePath.value || !lastFailedTranscriptionId.value) {
+      return;
+    }
+
+    isRetryAttempt.value = true;
+    clearAutoHideTimer();
+    transitionTo("transcribing", t("voiceFlow.transcribing"));
+
+    const filePath = lastFailedAudioFilePath.value;
+    const transcriptionId = lastFailedTranscriptionId.value;
+    const recordingDurationMs = lastFailedRecordingDurationMs.value;
+
+    try {
+      const settingsStore = useSettingsStore();
+      let apiKey = settingsStore.getApiKey();
+
+      if (!apiKey) {
+        await settingsStore.refreshApiKey();
+        apiKey = settingsStore.getApiKey();
+      }
+
+      if (!apiKey) {
+        transitionTo("error", t("errors.apiKeyMissing"));
+        lastFailedAudioFilePath.value = null;
+        isRetryAttempt.value = false;
+        return;
+      }
+
+      const vocabularyStore = useVocabularyStore();
+      const whisperTermList = await vocabularyStore.getTopTermListByWeight(50);
+      const hasVocabulary = whisperTermList.length > 0;
+
+      const result = await invoke<TranscriptionResult>(
+        "retranscribe_from_file",
+        {
+          filePath,
+          apiKey,
+          vocabularyTermList: hasVocabulary ? whisperTermList : null,
+          modelId: settingsStore.selectedWhisperModelId,
+          language: settingsStore.getWhisperLanguageCode(),
+        },
+      );
+
+      writeInfoLog(`重送轉錄原文: "${result.rawText}"`);
+
+      if (isEmptyTranscription(result.rawText)) {
+        // 重送也失敗 → 不再提供重送
+        transitionTo("error", t("voiceFlow.retryFailed"));
+        lastFailedAudioFilePath.value = null;
+        isRetryAttempt.value = false;
+        return;
+      }
+
+      // 重送成功 → 進入 AI 整理 → 貼上流程
+      if (
+        !settingsStore.isEnhancementThresholdEnabled ||
+        result.rawText.length >= settingsStore.enhancementThresholdCharCount
+      ) {
+        transitionTo("enhancing", t("voiceFlow.enhancing"));
+        const enhancementStartTime = performance.now();
+
+        try {
+          const enhancementTermList =
+            await vocabularyStore.getTopTermListByWeight(50);
+          const enhanceResult = await enhanceText(result.rawText, apiKey, {
+            systemPrompt: settingsStore.getAiPrompt(),
+            vocabularyTermList:
+              enhancementTermList.length > 0 ? enhancementTermList : undefined,
+            modelId: settingsStore.selectedLlmModelId,
+          });
+
+          const enhancementDurationMs =
+            performance.now() - enhancementStartTime;
+
+          const record = buildTranscriptionRecord({
+            id: transcriptionId,
+            rawText: result.rawText,
+            processedText: enhanceResult.text,
+            recordingDurationMs,
+            transcriptionDurationMs: result.transcriptionDurationMs,
+            enhancementDurationMs,
+            wasEnhanced: true,
+            audioFilePath: filePath,
+            status: "success",
+          });
+
+          writeInfoLog(`重送 AI 整理: "${enhanceResult.text}"`);
+
+          await completePasteFlow({
+            text: enhanceResult.text,
+            successMessage: t("voiceFlow.pasteSuccess"),
+            record,
+            chatUsage: enhanceResult.usage,
+            skipRecordSaving: true,
+          });
+
+          // 更新 DB status（UPDATE 而非 INSERT）→ 完成後記錄 API 用量（FK 依賴）
+          const historyStore = useHistoryStore();
+          void historyStore
+            .updateTranscriptionOnRetrySuccess({
+              id: transcriptionId,
+              rawText: result.rawText,
+              processedText: enhanceResult.text,
+              transcriptionDurationMs: Math.round(
+                result.transcriptionDurationMs,
+              ),
+              enhancementDurationMs: Math.round(enhancementDurationMs),
+              wasEnhanced: true,
+              charCount: enhanceResult.text.length,
+            })
+            .then(() => {
+              saveApiUsageRecordList(record, enhanceResult.usage);
+            })
+            .catch((err) =>
+              writeErrorLog(
+                `useVoiceFlowStore: updateTranscriptionOnRetrySuccess failed: ${extractErrorMessage(err)}`,
+              ),
+            );
+        } catch (enhanceError) {
+          const fallbackEnhancementDurationMs =
+            performance.now() - enhancementStartTime;
+          writeErrorLog(
+            `useVoiceFlowStore: retry AI enhancement failed: ${getEnhancementErrorMessage(enhanceError)}`,
+          );
+          captureError(enhanceError, {
+            source: "voice-flow",
+            step: "retry-enhancement",
+          });
+
+          const fallbackRecord = buildTranscriptionRecord({
+            id: transcriptionId,
+            rawText: result.rawText,
+            processedText: null,
+            recordingDurationMs,
+            transcriptionDurationMs: result.transcriptionDurationMs,
+            enhancementDurationMs: fallbackEnhancementDurationMs,
+            wasEnhanced: false,
+            audioFilePath: filePath,
+            status: "success",
+          });
+
+          await completePasteFlow({
+            text: result.rawText,
+            successMessage: t("voiceFlow.pasteSuccessUnenhanced"),
+            record: fallbackRecord,
+            chatUsage: null,
+            skipRecordSaving: true,
+          });
+
+          const historyStore = useHistoryStore();
+          void historyStore
+            .updateTranscriptionOnRetrySuccess({
+              id: transcriptionId,
+              rawText: result.rawText,
+              processedText: null,
+              transcriptionDurationMs: Math.round(
+                result.transcriptionDurationMs,
+              ),
+              enhancementDurationMs: Math.round(fallbackEnhancementDurationMs),
+              wasEnhanced: false,
+              charCount: result.rawText.length,
+            })
+            .then(() => {
+              saveApiUsageRecordList(fallbackRecord, null);
+            })
+            .catch((err) =>
+              writeErrorLog(
+                `useVoiceFlowStore: updateTranscriptionOnRetrySuccess failed: ${extractErrorMessage(err)}`,
+              ),
+            );
+        }
+      } else {
+        // 不需要 AI 整理
+        const record = buildTranscriptionRecord({
+          id: transcriptionId,
+          rawText: result.rawText,
+          processedText: null,
+          recordingDurationMs,
+          transcriptionDurationMs: result.transcriptionDurationMs,
+          enhancementDurationMs: null,
+          wasEnhanced: false,
+          audioFilePath: filePath,
+          status: "success",
+        });
+
+        await completePasteFlow({
+          text: result.rawText,
+          successMessage: t("voiceFlow.pasteSuccess"),
+          record,
+          chatUsage: null,
+          skipRecordSaving: true,
+        });
+
+        const historyStore = useHistoryStore();
+        void historyStore
+          .updateTranscriptionOnRetrySuccess({
+            id: transcriptionId,
+            rawText: result.rawText,
+            processedText: null,
+            transcriptionDurationMs: Math.round(result.transcriptionDurationMs),
+            enhancementDurationMs: null,
+            wasEnhanced: false,
+            charCount: result.rawText.length,
+          })
+          .then(() => {
+            saveApiUsageRecordList(record, null);
+          })
+          .catch((err) =>
+            writeErrorLog(
+              `useVoiceFlowStore: updateTranscriptionOnRetrySuccess failed: ${extractErrorMessage(err)}`,
+            ),
+          );
+      }
+
+      // 重送成功 → 重置所有重送狀態
+      lastFailedTranscriptionId.value = null;
+      lastFailedAudioFilePath.value = null;
+      lastFailedRecordingDurationMs.value = 0;
+      isRetryAttempt.value = false;
+    } catch (error) {
+      // 重送也失敗（API 錯誤等）→ 不再提供重送
+      transitionTo("error", t("voiceFlow.retryFailed"));
+      lastFailedAudioFilePath.value = null;
+      isRetryAttempt.value = false;
+      writeErrorLog(
+        `useVoiceFlowStore: retry transcription failed: ${extractErrorMessage(error)}`,
+      );
+      captureError(error, {
+        source: "voice-flow",
+        step: "retry-transcription",
+      });
     }
   }
 
@@ -1121,8 +1389,10 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     message,
     recordingElapsedSeconds,
     lastWasModified,
+    canRetry,
     initialize,
     cleanup,
+    handleRetryTranscription,
     transitionTo,
   };
 });

@@ -91,30 +91,16 @@ fn format_whisper_prompt(term_list: &[String]) -> String {
     format!("Important Vocabulary: {}", terms.join(", "))
 }
 
-// ========== Command ==========
+// ========== Shared Transcription Logic ==========
 
-#[command]
-pub async fn transcribe_audio(
-    state: State<'_, AudioRecorderState>,
-    transcription_state: State<'_, TranscriptionState>,
+async fn send_transcription_request(
+    wav_data: Vec<u8>,
+    transcription_state: &TranscriptionState,
     api_key: String,
     vocabulary_term_list: Option<Vec<String>>,
     model_id: Option<String>,
     language: Option<String>,
 ) -> Result<TranscriptionResult, TranscriptionError> {
-    if api_key.trim().is_empty() {
-        return Err(TranscriptionError::ApiKeyMissing);
-    }
-
-    // Take WAV data from shared state (consume it)
-    let wav_data = {
-        let mut guard = state
-            .wav_buffer
-            .lock()
-            .map_err(|_| TranscriptionError::LockPoisoned)?;
-        guard.take().ok_or(TranscriptionError::NoAudioData)?
-    };
-
     if wav_data.len() < MINIMUM_AUDIO_SIZE {
         return Err(TranscriptionError::AudioTooSmall(wav_data.len()));
     }
@@ -202,6 +188,77 @@ pub async fn transcribe_audio(
         transcription_duration_ms,
         no_speech_probability,
     })
+}
+
+// ========== Commands ==========
+
+#[command]
+pub async fn transcribe_audio(
+    state: State<'_, AudioRecorderState>,
+    transcription_state: State<'_, TranscriptionState>,
+    api_key: String,
+    vocabulary_term_list: Option<Vec<String>>,
+    model_id: Option<String>,
+    language: Option<String>,
+) -> Result<TranscriptionResult, TranscriptionError> {
+    if api_key.trim().is_empty() {
+        return Err(TranscriptionError::ApiKeyMissing);
+    }
+
+    // Take WAV data from shared state (consume it)
+    let wav_data = {
+        let mut guard = state
+            .wav_buffer
+            .lock()
+            .map_err(|_| TranscriptionError::LockPoisoned)?;
+        guard.take().ok_or(TranscriptionError::NoAudioData)?
+    };
+
+    send_transcription_request(
+        wav_data,
+        &transcription_state,
+        api_key,
+        vocabulary_term_list,
+        model_id,
+        language,
+    )
+    .await
+}
+
+#[command]
+pub async fn retranscribe_from_file(
+    transcription_state: State<'_, TranscriptionState>,
+    file_path: String,
+    api_key: String,
+    vocabulary_term_list: Option<Vec<String>>,
+    model_id: Option<String>,
+    language: Option<String>,
+) -> Result<TranscriptionResult, TranscriptionError> {
+    if api_key.trim().is_empty() {
+        return Err(TranscriptionError::ApiKeyMissing);
+    }
+
+    // 注意：std::fs::read 是同步 I/O，但 WAV 檔案通常很小（< 1MB），
+    // 在 Tauri command 的 async context 中可接受。
+    let wav_data = std::fs::read(&file_path).map_err(|e| {
+        TranscriptionError::RequestFailed(format!("Failed to read WAV file: {}", e))
+    })?;
+
+    println!(
+        "[transcription] Retranscribing from file: {} ({} bytes)",
+        file_path,
+        wav_data.len()
+    );
+
+    send_transcription_request(
+        wav_data,
+        &transcription_state,
+        api_key,
+        vocabulary_term_list,
+        model_id,
+        language,
+    )
+    .await
 }
 
 // ========== Tests ==========

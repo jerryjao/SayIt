@@ -24,6 +24,7 @@ const props = defineProps<{
   status: HudStatus;
   recordingElapsedSeconds: number;
   message: string;
+  canRetry: boolean;
 }>();
 
 defineEmits<{
@@ -370,7 +371,7 @@ onUnmounted(() => {
             {{ formattedElapsedTime }}
           </span>
           <span
-            v-else-if="visualMode === 'error'"
+            v-else-if="visualMode === 'error' && canRetry"
             class="retry-icon"
             @click.stop="$emit('retry')"
           >&#x21BB;</span>

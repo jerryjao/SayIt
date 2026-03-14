@@ -223,7 +223,8 @@
     "recordingTooShort": "録音時間が短すぎます",
     "vocabularyLearnedLabel": "辞書に追加",
     "vocabularyLearned": "{terms}",
-    "vocabularyLearnedTruncated": "{terms} 他 {count} 語"
+    "vocabularyLearnedTruncated": "{terms} 他 {count} 語",
+    "retryFailed": "認識失敗、もう一度録音してください"
   },
   "errors": {
     "apiKeyEmpty": "API Key は空にできません",

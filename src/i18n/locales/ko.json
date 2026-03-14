@@ -223,7 +223,8 @@
     "recordingTooShort": "녹음 시간이 너무 짧습니다",
     "vocabularyLearnedLabel": "사전에 추가",
     "vocabularyLearned": "{terms}",
-    "vocabularyLearnedTruncated": "{terms} 외 {count}개"
+    "vocabularyLearnedTruncated": "{terms} 외 {count}개",
+    "retryFailed": "인식 실패, 다시 녹음해 주세요"
   },
   "errors": {
     "apiKeyEmpty": "API Key는 비워둘 수 없습니다",

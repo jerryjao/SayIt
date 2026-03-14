@@ -223,7 +223,8 @@
     "recordingTooShort": "Recording too short",
     "vocabularyLearnedLabel": "Added to dictionary",
     "vocabularyLearned": "{terms}",
-    "vocabularyLearnedTruncated": "{terms} +{count} more"
+    "vocabularyLearnedTruncated": "{terms} +{count} more",
+    "retryFailed": "Recognition failed, please record again"
   },
   "errors": {
     "apiKeyEmpty": "API Key cannot be empty",
