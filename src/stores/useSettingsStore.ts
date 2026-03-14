@@ -54,6 +54,8 @@ export const DEFAULT_ENHANCEMENT_THRESHOLD_ENABLED = false;
 export const DEFAULT_ENHANCEMENT_THRESHOLD_CHAR_COUNT = 10;
 export const DEFAULT_MUTE_ON_RECORDING = true;
 const DEFAULT_SMART_DICTIONARY_ENABLED = navigator.userAgent.includes("Mac"); // macOS only — Windows 尚未支援 text field 讀取
+const DEFAULT_RECORDING_AUTO_CLEANUP_ENABLED = false;
+const DEFAULT_RECORDING_AUTO_CLEANUP_DAYS = 7;
 
 function getDefaultTriggerKey(): TriggerKey {
   const isMac = navigator.userAgent.includes("Mac");
@@ -100,6 +102,12 @@ export const useSettingsStore = defineStore("settings", () => {
   const customTriggerKeyDomCode = ref<string>("");
   const selectedLocale = ref<SupportedLocale>(FALLBACK_LOCALE);
   const selectedTranscriptionLocale = ref<TranscriptionLocale>(FALLBACK_LOCALE);
+  const isRecordingAutoCleanupEnabled = ref<boolean>(
+    DEFAULT_RECORDING_AUTO_CLEANUP_ENABLED,
+  );
+  const recordingAutoCleanupDays = ref<number>(
+    DEFAULT_RECORDING_AUTO_CLEANUP_DAYS,
+  );
   let isLoaded = false;
 
   /** Resolve which SupportedLocale to use for prompt default (shared logic). */
@@ -226,6 +234,18 @@ export const useSettingsStore = defineStore("settings", () => {
       );
       isSmartDictionaryEnabled.value =
         savedSmartDictionary ?? DEFAULT_SMART_DICTIONARY_ENABLED;
+
+      const savedRecordingAutoCleanup = await store.get<boolean>(
+        "recordingAutoCleanupEnabled",
+      );
+      isRecordingAutoCleanupEnabled.value =
+        savedRecordingAutoCleanup ?? DEFAULT_RECORDING_AUTO_CLEANUP_ENABLED;
+
+      const savedRecordingAutoCleanupDays = await store.get<number>(
+        "recordingAutoCleanupDays",
+      );
+      recordingAutoCleanupDays.value =
+        savedRecordingAutoCleanupDays ?? DEFAULT_RECORDING_AUTO_CLEANUP_DAYS;
 
       // Sync saved (or default) config to Rust on startup
       await syncHotkeyConfigToRust(key, mode);
@@ -724,6 +744,37 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  async function saveRecordingAutoCleanup(enabled: boolean, days: number) {
+    const validatedDays =
+      !Number.isInteger(days) || days < 1
+        ? DEFAULT_RECORDING_AUTO_CLEANUP_DAYS
+        : days;
+
+    try {
+      const store = await load(STORE_NAME);
+      await store.set("recordingAutoCleanupEnabled", enabled);
+      await store.set("recordingAutoCleanupDays", validatedDays);
+      await store.save();
+
+      isRecordingAutoCleanupEnabled.value = enabled;
+      recordingAutoCleanupDays.value = validatedDays;
+
+      console.log(
+        `[useSettingsStore] Recording auto cleanup saved: enabled=${enabled}, days=${validatedDays}`,
+      );
+    } catch (err) {
+      console.error(
+        "[useSettingsStore] saveRecordingAutoCleanup failed:",
+        extractErrorMessage(err),
+      );
+      captureError(err, {
+        source: "settings",
+        step: "save-recording-auto-cleanup",
+      });
+      throw err;
+    }
+  }
+
   async function refreshCrossWindowSettings() {
     try {
       const store = await load(STORE_NAME);
@@ -798,6 +849,17 @@ export const useSettingsStore = defineStore("settings", () => {
         savedMuteOnRecording ?? DEFAULT_MUTE_ON_RECORDING;
       isSmartDictionaryEnabled.value =
         savedSmartDictionary ?? DEFAULT_SMART_DICTIONARY_ENABLED;
+
+      const savedRecCleanup = await store.get<boolean>(
+        "recordingAutoCleanupEnabled",
+      );
+      isRecordingAutoCleanupEnabled.value =
+        savedRecCleanup ?? DEFAULT_RECORDING_AUTO_CLEANUP_ENABLED;
+      const savedRecCleanupDays = await store.get<number>(
+        "recordingAutoCleanupDays",
+      );
+      recordingAutoCleanupDays.value =
+        savedRecCleanupDays ?? DEFAULT_RECORDING_AUTO_CLEANUP_DAYS;
     } catch (err) {
       console.error(
         "[useSettingsStore] refreshCrossWindowSettings failed:",
@@ -872,6 +934,9 @@ export const useSettingsStore = defineStore("settings", () => {
     saveMuteOnRecording,
     isSmartDictionaryEnabled,
     saveSmartDictionaryEnabled,
+    isRecordingAutoCleanupEnabled,
+    recordingAutoCleanupDays,
+    saveRecordingAutoCleanup,
     selectedLocale,
     saveLocale,
     selectedTranscriptionLocale,

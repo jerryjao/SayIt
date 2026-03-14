@@ -60,6 +60,37 @@ async function bootstrap() {
     console.log("[main-window] API Key missing, redirected to settings");
   }
 
+  // 錄音檔自動清理（背景執行，不阻斷啟動）
+  if (settingsStore.isRecordingAutoCleanupEnabled) {
+    queueMicrotask(() => {
+      void (async () => {
+        try {
+          const days = settingsStore.recordingAutoCleanupDays;
+          const deletedIdList = await invoke<string[]>(
+            "cleanup_old_recordings",
+            { days },
+          );
+          if (deletedIdList.length > 0) {
+            const { useHistoryStore } = await import(
+              "./stores/useHistoryStore"
+            );
+            const historyStore = useHistoryStore();
+            await historyStore.clearAudioFilePathByIdList(deletedIdList);
+            console.log(
+              `[main-window] Auto cleanup: removed ${deletedIdList.length} old recordings (>${days} days)`,
+            );
+          }
+        } catch (err) {
+          console.error(
+            "[main-window] Auto cleanup failed:",
+            extractErrorMessage(err),
+          );
+          captureError(err, { source: "auto-cleanup" });
+        }
+      })();
+    });
+  }
+
   // 更新檢查由 MainApp.vue onMounted 的 autoCheckAndDownload() 處理
   console.log("[main-window] Dashboard initialized");
 }

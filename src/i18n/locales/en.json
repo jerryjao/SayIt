@@ -109,6 +109,21 @@
       "transcriptionLanguageUpdated": "Transcription language updated",
       "autoDetect": "Auto Detect"
     },
+    "recording": {
+      "title": "Recording Storage",
+      "description": "Recording files are saved to disk after transcription. You can play them back in history or use them for re-transcription.",
+      "autoCleanup": "Auto Cleanup",
+      "autoCleanupDescription": "Automatically delete recording files older than the specified number of days",
+      "autoCleanupEnabled": "Auto cleanup enabled",
+      "autoCleanupDisabled": "Auto cleanup disabled",
+      "retentionDays": "Retention Days",
+      "daysUnit": "days",
+      "daysSaved": "Retention days saved",
+      "deleteAll": "Delete All Recordings",
+      "deleteConfirmTitle": "Delete All Recordings",
+      "deleteConfirmDescription": "This will permanently delete all saved recording files. History records will be preserved, but playback will no longer be available.",
+      "deleteSuccess": "Deleted {count} recording files"
+    },
     "smartDictionary": {
       "title": "Smart Dictionary Learning",
       "description": "Auto-detect corrections after paste and learn new terms via AI analysis",
@@ -160,7 +175,10 @@
     "copied": "Copied",
     "copy": "Copy",
     "delete": "Delete",
-    "loadingMore": "Loading more..."
+    "loadingMore": "Loading more...",
+    "playRecording": "Play recording",
+    "noRecordingFile": "Recording file not available",
+    "failedBadge": "Failed"
   },
   "dictionary": {
     "termCount": "{count} terms",

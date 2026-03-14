@@ -33,6 +33,8 @@ function createTestRecord(
     wasEnhanced: false,
     wasModified: null,
     createdAt: "",
+    audioFilePath: null,
+    status: "success",
     ...overrides,
   };
 }
@@ -51,6 +53,8 @@ function createRawRow(overrides: Record<string, unknown> = {}) {
     was_enhanced: 0,
     was_modified: null,
     created_at: "2026-01-01 00:00:00",
+    audio_file_path: null,
+    status: "success",
     ...overrides,
   };
 }
@@ -96,6 +100,8 @@ describe("useHistoryStore", () => {
         record.triggerMode,
         1, // wasEnhanced: true → 1
         null, // wasModified: null → null
+        null, // audioFilePath
+        "success", // status
       ]);
     });
 

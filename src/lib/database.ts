@@ -161,6 +161,37 @@ export async function initializeDatabase(): Promise<Database> {
     );
   }
 
+  // --- Migration v3 → v4: recording storage + status ---
+  const v4VersionRows = await connection.select<{ version: number }[]>(
+    "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
+  );
+  const v4CurrentVersion = v4VersionRows[0]?.version ?? 1;
+
+  if (v4CurrentVersion < 4) {
+    await connection.execute("BEGIN TRANSACTION;");
+    try {
+      await connection.execute(
+        "ALTER TABLE transcriptions ADD COLUMN audio_file_path TEXT;",
+      );
+      await connection.execute(
+        "ALTER TABLE transcriptions ADD COLUMN status TEXT NOT NULL DEFAULT 'success';",
+      );
+      await connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_transcriptions_status ON transcriptions(status);",
+      );
+      await connection.execute(
+        "INSERT OR REPLACE INTO schema_version (version) VALUES (4);",
+      );
+      await connection.execute("COMMIT;");
+    } catch (migrationError) {
+      await connection.execute("ROLLBACK;");
+      throw migrationError;
+    }
+    console.log(
+      "[database] Migration v3 → v4: recording storage + status columns",
+    );
+  }
+
   // 只有全部 schema 建立成功才設定 singleton
   db = connection;
   console.log("[database] SQLite initialized with WAL mode");

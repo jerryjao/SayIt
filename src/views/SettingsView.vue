@@ -8,6 +8,7 @@ import {
 } from "../stores/useSettingsStore";
 import { extractErrorMessage } from "../lib/errorUtils";
 import { useFeedbackMessage } from "../composables/useFeedbackMessage";
+import { useHistoryStore } from "../stores/useHistoryStore";
 import {
   type PresetTriggerKey,
   isCustomTriggerKey,
@@ -52,15 +53,28 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import {
   AtSign,
   CircleAlert,
   Facebook,
   Github,
   Globe,
   Instagram,
+  Trash2,
 } from "lucide-vue-next";
 
 const settingsStore = useSettingsStore();
+const historyStore = useHistoryStore();
 const { t } = useI18n();
 
 // ── 快捷鍵設定 ──────────────────────────────────────────────
@@ -479,6 +493,60 @@ async function handleVocabularyAnalysisModelChange(
   }
 }
 
+// ── 錄音儲存管理 ──────────────────────────────────────────
+const recordingCleanupFeedback = useFeedbackMessage();
+const recordingAutoCleanupEnabled = ref(false);
+const recordingAutoCleanupDays = ref(7);
+const isDeletingRecordings = ref(false);
+
+async function handleToggleRecordingAutoCleanup() {
+  recordingAutoCleanupEnabled.value = !recordingAutoCleanupEnabled.value;
+  try {
+    await settingsStore.saveRecordingAutoCleanup(
+      recordingAutoCleanupEnabled.value,
+      recordingAutoCleanupDays.value,
+    );
+    recordingCleanupFeedback.show(
+      "success",
+      recordingAutoCleanupEnabled.value
+        ? t("settings.recording.autoCleanupEnabled")
+        : t("settings.recording.autoCleanupDisabled"),
+    );
+  } catch (err) {
+    recordingAutoCleanupEnabled.value = !recordingAutoCleanupEnabled.value;
+    recordingCleanupFeedback.show("error", extractErrorMessage(err));
+  }
+}
+
+async function handleSaveCleanupDays() {
+  try {
+    await settingsStore.saveRecordingAutoCleanup(
+      recordingAutoCleanupEnabled.value,
+      recordingAutoCleanupDays.value,
+    );
+    recordingAutoCleanupDays.value = settingsStore.recordingAutoCleanupDays;
+    recordingCleanupFeedback.show("success", t("settings.recording.daysSaved"));
+  } catch (err) {
+    recordingCleanupFeedback.show("error", extractErrorMessage(err));
+  }
+}
+
+async function handleDeleteAllRecordings() {
+  try {
+    isDeletingRecordings.value = true;
+    const deletedCount = await historyStore.deleteAllRecordingFiles();
+
+    recordingCleanupFeedback.show(
+      "success",
+      t("settings.recording.deleteSuccess", { count: deletedCount }),
+    );
+  } catch (err) {
+    recordingCleanupFeedback.show("error", extractErrorMessage(err));
+  } finally {
+    isDeletingRecordings.value = false;
+  }
+}
+
 // ── 應用程式 ────────────────────────────────────────────────
 const autoStartFeedback = useFeedbackMessage();
 const isTogglingAutoStart = ref(false);
@@ -505,6 +573,9 @@ onMounted(async () => {
   }
   thresholdEnabled.value = settingsStore.isEnhancementThresholdEnabled;
   thresholdCharCount.value = settingsStore.enhancementThresholdCharCount;
+  recordingAutoCleanupEnabled.value =
+    settingsStore.isRecordingAutoCleanupEnabled;
+  recordingAutoCleanupDays.value = settingsStore.recordingAutoCleanupDays;
   await settingsStore.loadAutoStartStatus();
 
   // Detect if current key is custom
@@ -526,6 +597,7 @@ onBeforeUnmount(() => {
   transcriptionLocaleFeedback.clearTimer();
   autoStartFeedback.clearTimer();
   smartDictionaryFeedback.clearTimer();
+  recordingCleanupFeedback.clearTimer();
   clearTimeout(deleteConfirmTimeoutId);
   clearTimeout(resetPromptConfirmTimeoutId);
 });
@@ -1064,6 +1136,90 @@ onBeforeUnmount(() => {
             "
           >
             {{ smartDictionaryFeedback.message.value }}
+          </p>
+        </transition>
+      </CardContent>
+    </Card>
+
+    <!-- 錄音儲存管理 -->
+    <Card>
+      <CardHeader class="border-b border-border">
+        <CardTitle class="text-base">{{ $t("settings.recording.title") }}</CardTitle>
+      </CardHeader>
+      <CardContent class="space-y-4">
+        <p class="text-sm text-muted-foreground leading-relaxed">
+          {{ $t("settings.recording.description") }}
+        </p>
+
+        <div class="flex items-center justify-between">
+          <div>
+            <Label for="recording-auto-cleanup">{{ $t("settings.recording.autoCleanup") }}</Label>
+            <p class="text-sm text-muted-foreground">{{ $t("settings.recording.autoCleanupDescription") }}</p>
+          </div>
+          <Switch
+            id="recording-auto-cleanup"
+            :model-value="recordingAutoCleanupEnabled"
+            @update:model-value="handleToggleRecordingAutoCleanup"
+          />
+        </div>
+
+        <div v-if="recordingAutoCleanupEnabled" class="flex items-center gap-3">
+          <Label for="cleanup-days">{{ $t("settings.recording.retentionDays") }}</Label>
+          <Input
+            id="cleanup-days"
+            v-model.number="recordingAutoCleanupDays"
+            type="number"
+            min="1"
+            class="w-24"
+          />
+          <span class="text-sm text-muted-foreground">{{ $t("settings.recording.daysUnit") }}</span>
+          <Button
+            size="sm"
+            @click="handleSaveCleanupDays"
+          >
+            {{ $t("common.save") }}
+          </Button>
+        </div>
+
+        <div class="border-t border-border" />
+
+        <AlertDialog>
+          <AlertDialogTrigger as-child>
+            <Button
+              variant="destructive"
+              :disabled="isDeletingRecordings"
+            >
+              <Trash2 class="h-4 w-4 mr-2" />
+              {{ $t("settings.recording.deleteAll") }}
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>{{ $t("settings.recording.deleteConfirmTitle") }}</AlertDialogTitle>
+              <AlertDialogDescription>
+                {{ $t("settings.recording.deleteConfirmDescription") }}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{{ $t("common.cancel") }}</AlertDialogCancel>
+              <AlertDialogAction @click="handleDeleteAllRecordings">
+                {{ $t("common.delete") }}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        <transition name="feedback-fade">
+          <p
+            v-if="recordingCleanupFeedback.message.value !== ''"
+            class="text-sm"
+            :class="
+              recordingCleanupFeedback.type.value === 'success'
+                ? 'text-green-400'
+                : 'text-red-400'
+            "
+          >
+            {{ recordingCleanupFeedback.message.value }}
           </p>
         </transition>
       </CardContent>

@@ -7,7 +7,7 @@ use std::time::Instant;
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use rustfft::{num_complex::Complex, FftPlanner};
-use tauri::{command, AppHandle, Emitter, State};
+use tauri::{command, AppHandle, Emitter, Manager, State};
 
 // ========== Error Type ==========
 
@@ -480,6 +480,118 @@ fn encode_wav(samples: &[i16], sample_rate: u32) -> Result<Vec<u8>, AudioRecorde
     }
 
     Ok(buffer.into_inner())
+}
+
+// ========== Recording File Management Commands ==========
+
+#[command]
+pub fn save_recording_file(
+    id: String,
+    app: AppHandle,
+    state: State<'_, AudioRecorderState>,
+) -> Result<String, String> {
+    let wav_data = state
+        .wav_buffer
+        .lock()
+        .map_err(|e| format!("Failed to lock wav_buffer: {}", e))?
+        .clone()
+        .ok_or_else(|| "No WAV data available".to_string())?;
+
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    let recordings_dir = app_data_dir.join("recordings");
+    std::fs::create_dir_all(&recordings_dir)
+        .map_err(|e| format!("Failed to create recordings dir: {}", e))?;
+
+    let file_path = recordings_dir.join(format!("{}.wav", id));
+    std::fs::write(&file_path, &wav_data)
+        .map_err(|e| format!("Failed to write WAV file: {}", e))?;
+
+    println!(
+        "[audio-recorder] Recording saved: {} ({} bytes)",
+        file_path.display(),
+        wav_data.len()
+    );
+
+    Ok(file_path.to_string_lossy().to_string())
+}
+
+#[command]
+pub fn delete_all_recordings(app: AppHandle) -> Result<u32, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    let recordings_dir = app_data_dir.join("recordings");
+    if !recordings_dir.exists() {
+        return Ok(0);
+    }
+
+    let mut count = 0u32;
+    for entry in std::fs::read_dir(&recordings_dir)
+        .map_err(|e| format!("Failed to read recordings dir: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+        if path.extension().map_or(false, |ext| ext == "wav") {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+            count += 1;
+        }
+    }
+
+    println!("[audio-recorder] Deleted {} recording files", count);
+    Ok(count)
+}
+
+#[command]
+pub fn cleanup_old_recordings(days: u32, app: AppHandle) -> Result<Vec<String>, String> {
+    let app_data_dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+
+    let recordings_dir = app_data_dir.join("recordings");
+    if !recordings_dir.exists() {
+        return Ok(vec![]);
+    }
+
+    let cutoff = std::time::SystemTime::now()
+        - std::time::Duration::from_secs(u64::from(days) * 24 * 60 * 60);
+
+    let mut deleted_id_list: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(&recordings_dir)
+        .map_err(|e| format!("Failed to read recordings dir: {}", e))?
+    {
+        let entry = entry.map_err(|e| format!("Failed to read dir entry: {}", e))?;
+        let path = entry.path();
+        if !path.extension().map_or(false, |ext| ext == "wav") {
+            continue;
+        }
+        let metadata =
+            std::fs::metadata(&path).map_err(|e| format!("Failed to get metadata: {}", e))?;
+        let modified = metadata
+            .modified()
+            .map_err(|e| format!("Failed to get modified time: {}", e))?;
+        if modified < cutoff {
+            if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                deleted_id_list.push(stem.to_string());
+            }
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("Failed to delete {}: {}", path.display(), e))?;
+        }
+    }
+
+    println!(
+        "[audio-recorder] Cleaned up {} old recordings (>{} days)",
+        deleted_id_list.len(),
+        days
+    );
+    Ok(deleted_id_list)
 }
 
 // ========== Tests ==========

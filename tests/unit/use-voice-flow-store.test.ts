@@ -247,6 +247,8 @@ function createMockInvokeHandler(options?: {
         return undefined;
       case "stop_recording":
         return options?.stopRecordingResult ?? { recordingDurationMs: 2500 };
+      case "save_recording_file":
+        return "/mock/recordings/test.wav";
       case "transcribe_audio":
         if (options?.transcribeError) throw options.transcribeError;
         if (options?.transcribeResult !== undefined) {
@@ -1615,7 +1617,7 @@ describe("useVoiceFlowStore", () => {
       expect(record.wasModified).toBeNull();
     });
 
-    it("[P0] 轉錄失敗時不應呼叫 addTranscription", async () => {
+    it("[P0] AC2: 轉錄 API 失敗時應寫入 failed 記錄（有 audioFilePath）", async () => {
       mockInvoke.mockImplementation(
         createMockInvokeHandler({
           transcribeError: new Error("Groq API error (500)"),
@@ -1635,10 +1637,15 @@ describe("useVoiceFlowStore", () => {
         expect(store.status).toBe("error");
       });
 
-      expect(mockAddTranscription).not.toHaveBeenCalled();
+      // AC2: API 錯誤時仍寫入 failed 記錄（audioFilePath 非 null）
+      expect(mockAddTranscription).toHaveBeenCalledTimes(1);
+      const record = mockAddTranscription.mock.calls[0][0];
+      expect(record.status).toBe("failed");
+      expect(record.audioFilePath).toBe("/mock/recordings/test.wav");
+      expect(record.rawText).toBe("");
     });
 
-    it("[P0] 空白轉錄結果不應呼叫 addTranscription", async () => {
+    it("[P0] 空白轉錄結果應寫入 failed 記錄", async () => {
       mockInvoke.mockImplementation(
         createMockInvokeHandler({
           transcribeResult: {
@@ -1662,7 +1669,11 @@ describe("useVoiceFlowStore", () => {
         expect(store.status).toBe("error");
       });
 
-      expect(mockAddTranscription).not.toHaveBeenCalled();
+      // AC2: 空轉錄仍寫入 failed 記錄
+      expect(mockAddTranscription).toHaveBeenCalledTimes(1);
+      const record = mockAddTranscription.mock.calls[0][0];
+      expect(record.status).toBe("failed");
+      expect(record.rawText).toBe("");
     });
 
     it("[P0] addTranscription 失敗不應影響主流程（fire-and-forget）", async () => {

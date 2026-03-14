@@ -256,16 +256,19 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   }
 
   function buildTranscriptionRecord(params: {
+    id: string;
     rawText: string;
     processedText: string | null;
     recordingDurationMs: number;
     transcriptionDurationMs: number;
     enhancementDurationMs: number | null;
     wasEnhanced: boolean;
+    audioFilePath: string | null;
+    status: "success" | "failed";
   }): TranscriptionRecord {
     const settingsStore = useSettingsStore();
     return {
-      id: crypto.randomUUID(),
+      id: params.id,
       timestamp: Date.now(),
       rawText: params.rawText,
       processedText: params.processedText,
@@ -280,6 +283,8 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       wasEnhanced: params.wasEnhanced,
       wasModified: null,
       createdAt: "",
+      audioFilePath: params.audioFilePath,
+      status: params.status,
     };
   }
 
@@ -803,12 +808,48 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     void invoke("play_stop_sound").catch(() => {});
     stopElapsedTimer();
 
+    // 生成 transcriptionId 貫穿整個流程
+    const transcriptionId = crypto.randomUUID();
+    // 提升到 try 外層，讓 catch 也能存取（AC2: API 錯誤時仍寫入 failed 記錄）
+    let audioFilePath: string | null = null;
+    let recordingDurationMs = 0;
+
     try {
       const stopResult = await invoke<StopRecordingResult>("stop_recording");
-      const recordingDurationMs = stopResult.recordingDurationMs;
+      recordingDurationMs = stopResult.recordingDurationMs;
+
+      // 錄音檔儲存（不阻斷主流程）
+      try {
+        audioFilePath = await invoke<string>("save_recording_file", {
+          id: transcriptionId,
+        });
+        writeInfoLog(`useVoiceFlowStore: recording saved: ${audioFilePath}`);
+      } catch (saveErr) {
+        writeErrorLog(
+          `useVoiceFlowStore: save_recording_file failed (non-blocking): ${extractErrorMessage(saveErr)}`,
+        );
+        captureError(saveErr, {
+          source: "voice-flow",
+          step: "save-recording-file",
+        });
+      }
 
       const MINIMUM_RECORDING_DURATION_MS = 300;
       if (recordingDurationMs < MINIMUM_RECORDING_DURATION_MS) {
+        // 錄音太短 → 寫入 failed 記錄，保留錄音檔
+        const failedRecord = buildTranscriptionRecord({
+          id: transcriptionId,
+          rawText: "",
+          processedText: null,
+          recordingDurationMs,
+          transcriptionDurationMs: 0,
+          enhancementDurationMs: null,
+          wasEnhanced: false,
+          audioFilePath,
+          status: "failed",
+        });
+        void saveTranscriptionRecord(failedRecord);
+
         failRecordingFlow(
           t("voiceFlow.recordingTooShort"),
           `useVoiceFlowStore: recording too short (${Math.round(recordingDurationMs)}ms)`,
@@ -847,6 +888,20 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       writeInfoLog(`轉錄原文: "${result.rawText}"`);
 
       if (isEmptyTranscription(result.rawText)) {
+        // 空轉錄 → 寫入 failed 記錄，保留錄音檔
+        const failedRecord = buildTranscriptionRecord({
+          id: transcriptionId,
+          rawText: result.rawText || "",
+          processedText: null,
+          recordingDurationMs,
+          transcriptionDurationMs: result.transcriptionDurationMs,
+          enhancementDurationMs: null,
+          wasEnhanced: false,
+          audioFilePath,
+          status: "failed",
+        });
+        void saveTranscriptionRecord(failedRecord);
+
         failRecordingFlow(
           t("voiceFlow.noSpeechDetected"),
           `useVoiceFlowStore: empty transcription (noSpeechProb=${result.noSpeechProbability.toFixed(3)})`,
@@ -875,12 +930,15 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
             performance.now() - enhancementStartTime;
 
           const record = buildTranscriptionRecord({
+            id: transcriptionId,
             rawText: result.rawText,
             processedText: enhanceResult.text,
             recordingDurationMs,
             transcriptionDurationMs: result.transcriptionDurationMs,
             enhancementDurationMs,
             wasEnhanced: true,
+            audioFilePath,
+            status: "success",
           });
 
           writeInfoLog(`AI 整理: "${enhanceResult.text}"`);
@@ -912,12 +970,15 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
           });
 
           const fallbackRecord = buildTranscriptionRecord({
+            id: transcriptionId,
             rawText: result.rawText,
             processedText: null,
             recordingDurationMs,
             transcriptionDurationMs: result.transcriptionDurationMs,
             enhancementDurationMs: fallbackEnhancementDurationMs,
             wasEnhanced: false,
+            audioFilePath,
+            status: "success",
           });
 
           await completePasteFlow({
@@ -929,12 +990,15 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         }
       } else {
         const record = buildTranscriptionRecord({
+          id: transcriptionId,
           rawText: result.rawText,
           processedText: null,
           recordingDurationMs,
           transcriptionDurationMs: result.transcriptionDurationMs,
           enhancementDurationMs: null,
           wasEnhanced: false,
+          audioFilePath,
+          status: "success",
         });
 
         await completePasteFlow({
@@ -951,6 +1015,22 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         );
       }
     } catch (error) {
+      // AC2: API 錯誤時仍寫入 failed 記錄（如果有 audioFilePath）
+      if (audioFilePath) {
+        const failedRecord = buildTranscriptionRecord({
+          id: transcriptionId,
+          rawText: "",
+          processedText: null,
+          recordingDurationMs,
+          transcriptionDurationMs: 0,
+          enhancementDurationMs: null,
+          wasEnhanced: false,
+          audioFilePath,
+          status: "failed",
+        });
+        void saveTranscriptionRecord(failedRecord);
+      }
+
       const userMessage = getTranscriptionErrorMessage(error);
       const technicalMessage = extractErrorMessage(error);
       failRecordingFlow(

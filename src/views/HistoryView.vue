@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useHistoryStore } from "../stores/useHistoryStore";
 import {
@@ -19,7 +20,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, ChevronDown, Copy, Check, Trash2 } from "lucide-vue-next";
+import { Search, ChevronDown, Copy, Check, Trash2, Play, Pause } from "lucide-vue-next";
 
 const historyStore = useHistoryStore();
 
@@ -27,6 +28,8 @@ const searchInput = ref("");
 const expandedRecordId = ref<string | null>(null);
 const copiedRecordId = ref<string | null>(null);
 const sentinelRef = ref<HTMLElement | null>(null);
+const playingRecordId = ref<string | null>(null);
+let currentAudio: HTMLAudioElement | null = null;
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null;
 let copiedTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,6 +65,41 @@ async function handleCopyText(record: TranscriptionRecord) {
   }
 }
 
+function handlePlayRecording(record: TranscriptionRecord) {
+  // 停止正在播放的
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+
+  // 如果點擊同一個（暫停）
+  if (playingRecordId.value === record.id) {
+    playingRecordId.value = null;
+    return;
+  }
+
+  if (!record.audioFilePath) return;
+
+  const audioSrc = convertFileSrc(record.audioFilePath);
+  currentAudio = new Audio(audioSrc);
+  playingRecordId.value = record.id;
+
+  currentAudio.addEventListener("ended", () => {
+    playingRecordId.value = null;
+    currentAudio = null;
+  });
+
+  currentAudio.addEventListener("error", () => {
+    playingRecordId.value = null;
+    currentAudio = null;
+  });
+
+  currentAudio.play().catch(() => {
+    playingRecordId.value = null;
+    currentAudio = null;
+  });
+}
+
 onMounted(async () => {
   await historyStore.resetAndFetch();
 
@@ -90,6 +128,13 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  // 停止播放、釋放 Audio 資源
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio = null;
+  }
+  playingRecordId.value = null;
+
   unlistenTranscriptionCompleted?.();
   observer?.disconnect();
   if (searchTimer) clearTimeout(searchTimer);
@@ -158,11 +203,29 @@ onBeforeUnmount(() => {
                   >
                     {{ $t("dashboard.aiEnhanced") }}
                   </Badge>
+                  <Badge
+                    v-if="record.status === 'failed'"
+                    variant="destructive"
+                    class="text-[11px]"
+                  >
+                    {{ $t("history.failedBadge") }}
+                  </Badge>
                 </div>
                 <div class="flex items-center gap-2">
                   <span class="text-xs text-muted-foreground">
                     {{ formatDuration(record.recordingDurationMs) }}
                   </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-7 w-7"
+                    :disabled="!record.audioFilePath"
+                    :title="record.audioFilePath ? $t('history.playRecording') : $t('history.noRecordingFile')"
+                    @click.stop="handlePlayRecording(record)"
+                  >
+                    <Pause v-if="playingRecordId === record.id" class="h-3.5 w-3.5" />
+                    <Play v-else class="h-3.5 w-3.5" />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon"

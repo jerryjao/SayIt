@@ -9,6 +9,7 @@ import type {
 } from "../types/transcription";
 import type { TriggerMode } from "../types";
 import type { TranscriptionCompletedPayload } from "../types/events";
+import { invoke } from "@tauri-apps/api/core";
 import { getDatabase } from "../lib/database";
 import { extractErrorMessage } from "../lib/errorUtils";
 import { captureError } from "../lib/sentry";
@@ -32,6 +33,8 @@ interface RawTranscriptionRow {
   was_enhanced: number;
   was_modified: number | null;
   created_at: string;
+  audio_file_path: string | null;
+  status: string;
 }
 
 function mapRowToRecord(row: RawTranscriptionRow): TranscriptionRecord {
@@ -48,6 +51,8 @@ function mapRowToRecord(row: RawTranscriptionRow): TranscriptionRecord {
     wasEnhanced: row.was_enhanced === 1,
     wasModified: row.was_modified === null ? null : row.was_modified === 1,
     createdAt: row.created_at,
+    audioFilePath: row.audio_file_path,
+    status: row.status as TranscriptionRecord["status"],
   };
 }
 
@@ -55,14 +60,16 @@ const INSERT_SQL = `
   INSERT INTO transcriptions (
     id, timestamp, raw_text, processed_text,
     recording_duration_ms, transcription_duration_ms, enhancement_duration_ms,
-    char_count, trigger_mode, was_enhanced, was_modified
-  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    char_count, trigger_mode, was_enhanced, was_modified,
+    audio_file_path, status
+  ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 `;
 
 const SELECT_ALL_SQL = `
   SELECT id, timestamp, raw_text, processed_text,
          recording_duration_ms, transcription_duration_ms, enhancement_duration_ms,
-         char_count, trigger_mode, was_enhanced, was_modified, created_at
+         char_count, trigger_mode, was_enhanced, was_modified, created_at,
+         audio_file_path, status
   FROM transcriptions
   ORDER BY timestamp DESC
 `;
@@ -70,7 +77,8 @@ const SELECT_ALL_SQL = `
 const SELECT_PAGED_SQL = `
   SELECT id, timestamp, raw_text, processed_text,
          recording_duration_ms, transcription_duration_ms, enhancement_duration_ms,
-         char_count, trigger_mode, was_enhanced, was_modified, created_at
+         char_count, trigger_mode, was_enhanced, was_modified, created_at,
+         audio_file_path, status
   FROM transcriptions
   ORDER BY timestamp DESC
   LIMIT $1 OFFSET $2
@@ -79,7 +87,8 @@ const SELECT_PAGED_SQL = `
 const SEARCH_PAGED_SQL = `
   SELECT id, timestamp, raw_text, processed_text,
          recording_duration_ms, transcription_duration_ms, enhancement_duration_ms,
-         char_count, trigger_mode, was_enhanced, was_modified, created_at
+         char_count, trigger_mode, was_enhanced, was_modified, created_at,
+         audio_file_path, status
   FROM transcriptions
   WHERE raw_text LIKE $1 ESCAPE '\\' OR processed_text LIKE $1 ESCAPE '\\'
   ORDER BY timestamp DESC
@@ -92,6 +101,7 @@ const DASHBOARD_STATS_SQL = `
     COALESCE(SUM(char_count), 0) as total_characters,
     COALESCE(SUM(recording_duration_ms), 0) as total_recording_duration_ms
   FROM transcriptions
+  WHERE status != 'failed'
 `;
 
 const INSERT_API_USAGE_SQL = `
@@ -120,7 +130,7 @@ const DAILY_USAGE_TREND_SQL = `
     COUNT(*) as count,
     COALESCE(SUM(char_count), 0) as total_chars
   FROM transcriptions
-  WHERE timestamp >= $1
+  WHERE timestamp >= $1 AND status != 'failed'
   GROUP BY date
   ORDER BY date DESC
   LIMIT $2
@@ -129,7 +139,8 @@ const DAILY_USAGE_TREND_SQL = `
 const SELECT_RECENT_SQL = `
   SELECT id, timestamp, raw_text, processed_text,
          recording_duration_ms, transcription_duration_ms, enhancement_duration_ms,
-         char_count, trigger_mode, was_enhanced, was_modified, created_at
+         char_count, trigger_mode, was_enhanced, was_modified, created_at,
+         audio_file_path, status
   FROM transcriptions
   ORDER BY timestamp DESC
   LIMIT $1
@@ -256,6 +267,8 @@ export const useHistoryStore = defineStore("history", () => {
         record.triggerMode,
         record.wasEnhanced ? 1 : 0,
         record.wasModified === null ? null : record.wasModified ? 1 : 0,
+        record.audioFilePath,
+        record.status,
       ]);
     } catch (err) {
       console.error(
@@ -429,6 +442,29 @@ export const useHistoryStore = defineStore("history", () => {
     }
   }
 
+  async function clearAllAudioFilePath(): Promise<void> {
+    const db = getDatabase();
+    await db.execute(
+      "UPDATE transcriptions SET audio_file_path = NULL WHERE audio_file_path IS NOT NULL",
+    );
+  }
+
+  async function clearAudioFilePathByIdList(idList: string[]): Promise<void> {
+    if (idList.length === 0) return;
+    const db = getDatabase();
+    const placeholders = idList.map((_, i) => `$${i + 1}`).join(", ");
+    await db.execute(
+      `UPDATE transcriptions SET audio_file_path = NULL WHERE id IN (${placeholders})`,
+      idList,
+    );
+  }
+
+  async function deleteAllRecordingFiles(): Promise<number> {
+    const deletedCount = await invoke<number>("delete_all_recordings");
+    await clearAllAudioFilePath();
+    return deletedCount;
+  }
+
   return {
     transcriptionList,
     isLoading,
@@ -447,5 +483,8 @@ export const useHistoryStore = defineStore("history", () => {
     fetchDashboardStats,
     fetchRecentTranscriptionList,
     refreshDashboard,
+    clearAllAudioFilePath,
+    clearAudioFilePathByIdList,
+    deleteAllRecordingFiles,
   };
 });

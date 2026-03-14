@@ -1,5 +1,7 @@
 import type { TriggerMode } from "./index";
 
+export type TranscriptionStatus = "success" | "failed";
+
 export interface TranscriptionRecord {
   id: string;
   timestamp: number;
@@ -13,6 +15,8 @@ export interface TranscriptionRecord {
   wasEnhanced: boolean;
   wasModified: boolean | null;
   createdAt: string;
+  audioFilePath: string | null;
+  status: TranscriptionStatus;
 }
 
 export interface DailyQuotaUsage {

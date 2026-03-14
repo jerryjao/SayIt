@@ -109,6 +109,21 @@
       "transcriptionLanguageUpdated": "轉錄語言已更新",
       "autoDetect": "自動偵測"
     },
+    "recording": {
+      "title": "錄音儲存管理",
+      "description": "錄音檔案會在轉錄後儲存至磁碟，您可以在歷史記錄中播放或用於重新轉錄。",
+      "autoCleanup": "自動清理",
+      "autoCleanupDescription": "自動刪除超過指定天數的錄音檔案",
+      "autoCleanupEnabled": "已啟用自動清理",
+      "autoCleanupDisabled": "已停用自動清理",
+      "retentionDays": "保留天數",
+      "daysUnit": "天",
+      "daysSaved": "保留天數已儲存",
+      "deleteAll": "刪除所有錄音檔",
+      "deleteConfirmTitle": "確認刪除所有錄音",
+      "deleteConfirmDescription": "此操作將刪除所有已儲存的錄音檔案，無法復原。歷史記錄仍會保留，但無法再播放。",
+      "deleteSuccess": "已刪除 {count} 個錄音檔"
+    },
     "smartDictionary": {
       "title": "智慧字典學習",
       "description": "轉錄貼上後自動偵測修正，透過 AI 分析學習新詞彙",
@@ -160,7 +175,10 @@
     "copied": "已複製",
     "copy": "複製",
     "delete": "刪除",
-    "loadingMore": "載入更多..."
+    "loadingMore": "載入更多...",
+    "playRecording": "播放錄音",
+    "noRecordingFile": "錄音檔案不存在",
+    "failedBadge": "辨識失敗"
   },
   "dictionary": {
     "termCount": "{count} 詞彙",
