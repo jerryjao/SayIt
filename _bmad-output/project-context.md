@@ -2,9 +2,9 @@
 project_name: 'sayit'
 user_name: 'Jackle'
 date: '2026-03-15'
-sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n', 'smart_dictionary', 'model_registry_v2']
+sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n', 'smart_dictionary', 'model_registry_v2', 'esc_global_abort']
 status: 'complete'
-rule_count: 168
+rule_count: 255
 optimized_for_llm: true
 ---
 
@@ -119,7 +119,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **錯誤上報** — 關鍵流程失敗（錄音、轉錄、AI 整理、DB 初始化、bootstrap）必須呼叫 `captureError(error, { source, step })`
 - **context 結構規範** — `captureError(err, { source: "模組名", step: "操作名" })`，`source` 對應模組（`settings`/`voice-flow`/`history`/`database-init`/`bootstrap`），`step` 對應操作（`load`/`save-locale`/`transcribe`）
 - **上報層級** — 只從 store actions 或啟動腳本（`main.ts`, `main-window.ts`）呼叫，`lib/` 層只拋錯不上報
-- **覆蓋範圍** — 29 個 `captureError` 呼叫點：`useSettingsStore`（8）、`useVoiceFlowStore`（7）、`useHistoryStore`（6）、`main.ts`（2）、`main-window.ts`（3）、`AccessibilityGuide.vue`（3）
+- **覆蓋範圍** — 59 個 `captureError` 呼叫點：`useVoiceFlowStore`（17）、`useSettingsStore`（10）、`useHistoryStore`（8）、`useVocabularyStore`（6）、`useHallucinationStore`（5）、`main-window.ts`（5）、`MainApp.vue`（3）、`AccessibilityGuide.vue`（3）、`main.ts`（2）
 - **全域錯誤處理** — 兩個視窗各自設定 `app.config.errorHandler`（Vue 元件錯誤）+ `window.addEventListener("unhandledrejection")`（未捕獲 Promise），確保逃逸的錯誤也能上報
 - **Rust 端清理** — App 退出前呼叫 `sentry::end_session()` + `client.flush(Duration::from_secs(2))`，確保最後的 event 發送完成
 - **Release 格式** — `sayit@<version>`，由 CI/CD 環境變數自動設定
@@ -149,7 +149,9 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **平台隔離** — `#[cfg(target_os = "macos")]` / `#[cfg(target_os = "windows")]` 隔離，不可在同一函式中混合
 - **unsafe 標記** — macOS `objc::msg_send!` 呼叫必須在 `unsafe {}` 區塊內
 - **原子操作** — 跨執行緒共享狀態使用 `AtomicBool` + `Ordering::SeqCst`
-- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`, `audio_control`, `audio_recorder`, `transcription`, `sound_feedback`, `text_field_reader`）
+- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`, `audio_control`, `audio_recorder`, `transcription`, `sound_feedback`, `text_field_reader`）。`hotkey_listener` 額外提供 `reset_hotkey_state` command（ESC 中斷後重置 toggle 狀態）
+- **audio_recorder 錄音檔管理 Commands（Story 4.4）** — `save_recording_file`（寫入 WAV 至 `{APP_DATA}/recordings/`）、`delete_all_recordings`（清除所有錄音檔）、`cleanup_old_recordings`（按天數清理過期檔案，回傳被刪除的 transcription ID list）
+- **transcription 重送 Command（Story 4.5）** — `retranscribe_from_file`（從磁碟讀取 WAV 重新轉錄），內部共用 `send_transcription_request()` 函式（與 `transcribe_audio` 共用 Groq API 邏輯，避免重複實作）
 - **Plugin State shutdown 慣例** — 每個 Plugin State struct 必須實作 `pub fn shutdown(&self)` 方法，用於 App 退出時清理資源（停止錄音、恢復音量、取消 CGEventTap 等）。`shutdown()` 內部必須處理 `Mutex` poisoned 的情況（`match lock() { Err(_) => return }`）
 - **Serde JSON 序列化** — Rust → 前端的 payload struct 使用 `#[serde(rename_all = "camelCase")]` 確保前端收到 camelCase JSON
 - **Crate 命名** — `name = "sayit_lib"`，`crate-type = ["staticlib", "cdylib", "rlib"]`
@@ -177,7 +179,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 #### Vue Router
 
 - **History 模式** — `createWebHashHistory()`（Tauri WebView 不支援 HTML5 History）
-- **路由定義** — `src/router.ts`，四個頁面路由：`/dashboard`、`/history`、`/dictionary`、`/settings`
+- **路由定義** — `src/router.ts`，五個頁面路由：`/dashboard`、`/history`、`/dictionary`、`/hallucinations`、`/settings`
 - **預設路由** — `/` redirect 到 `/dashboard`
 
 #### Tauri v2 通訊
@@ -210,6 +212,18 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Flag 控制** — 靠 `is_monitoring: AtomicBool`（品質監控）和 `correction_monitoring: AtomicBool`（修正偵測）獨立控制是否處理事件。兩個 monitor 使用完全獨立的 flag 集，可同時啟用
 - **設計動機** — 重複建立/銷毀 CGEventTap 會產生幽靈按鍵（ghost Enter key），這是已確認的 bug 根因
 
+#### ESC 全域中斷（VoiceFlow Abort Pattern）
+
+- **觸發** — Rust `hotkey_listener.rs` 偵測 ESC KeyDown（macOS keycode 53 / Windows VK 0x1B），emit `escape:pressed` 事件（不經過 `handle_key_event()`，獨立路徑）
+- **前端處理** — `useVoiceFlowStore` 的 `handleEscapeAbort()` 根據當前狀態中斷操作（idle/success/error/cancelled 時忽略）
+- **abort 機制** — `isAborted: Ref<boolean>` + `AbortController`，recording 時停止錄音、transcribing 時丟棄結果、enhancing 時 abort fetch（signal 傳入 `enhanceText()`）
+- **狀態重置** — 無條件設 `isRecording = false`、清理所有 timer/polling/listener、呼叫 `reset_hotkey_state` command 重置 Rust 端 `is_pressed`/`is_toggled_on`
+- **abort guard 慣例** — `handleStopRecording()` 和 `handleRetryTranscription()` 的所有 `await` 之後及外層 `catch` 必須檢查 `if (isAborted.value) return;`
+- **重置時機** — `handleStartRecording()` 和 `handleRetryTranscription()` 開頭重置 `isAborted = false` + `abortController = new AbortController()`
+- **HUD 回饋** — 轉為 `"cancelled"` 狀態（`NotchHud.vue` X 圖示 + "已取消" label），顯示 1 秒後 collapse
+- **ESC 為保留鍵** — `keycodeMap.ts` 中 ESC 為 hard block（`getDangerousKeyWarning("Escape")` 回傳 null，`getEscapeReservedMessage()` 提供錯誤訊息），設定頁面拒絕設定 ESC 為 trigger key
+- **已知限制** — Rust 端 `transcribe_audio` HTTP 請求無法真正取消，僅前端忽略結果（API 費用照算）
+
 #### Tauri Events 完整清單
 
 | Event Name | 常量名 | Direction | Payload |
@@ -226,6 +240,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `correction-monitor:result` | `CORRECTION_MONITOR_RESULT` | Rust → HUD | `CorrectionMonitorResultPayload` |
 | `audio:waveform` | `AUDIO_WAVEFORM` | Rust → HUD | `WaveformPayload { levels: [f32; 6] }` |
 | `vocabulary:learned` | `VOCABULARY_LEARNED` | VoiceFlowStore → HUD | `VocabularyLearnedPayload` |
+| `hallucination:learned` | `HALLUCINATION_LEARNED` | VoiceFlowStore → HUD | `HallucinationLearnedPayload` |
+| `escape:pressed` | `ESCAPE_PRESSED` | Rust → HUD | — |
 
 #### SettingsKey 跨視窗同步
 
@@ -243,7 +259,21 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **AI Prompt 多語言** — `src/i18n/prompts.ts` 集中管理各語言預設 prompt（prompt 過長不適合 JSON），`getDefaultPromptForLocale(locale)` 取得對應語言版本
 - **語言偵測** — `detectSystemLocale()` 5 層匹配：精確 → script subtag（`zh-Hant` → `zh-TW`）→ 語言前綴 → 裸 `zh` → fallback `zh-TW`（保護既有中文使用者升級路徑）
 - **HTML lang 屬性** — `document.documentElement.lang` 隨 locale 更新（zh-TW → `zh-Hant`、zh-CN → `zh-Hans`）
-- **幻覺檢測策略（v0.7.3 修正）** — `isEmptyTranscription()` 只攔截完全空白文字（`!rawText.trim()`）。Whisper 幻聽（如「谢谢大家」、重複片語）不攔截，直接貼上讓使用者自行 Cmd+Z。理由：攔截幻聽 + 顯示「未偵測到語音」會讓使用者誤以為系統故障
+
+#### 幻覺偵測架構（v0.9.0 新增，Story 2.4）
+
+- **偵測模組** — `src/lib/hallucinationDetector.ts`，純函式（無 Vue/Pinia 依賴），`detectHallucination()` 回傳 `HallucinationDetectionResult`
+- **三層判定邏輯**：
+  - **Layer 1（語速異常）** — 錄音 < 1000ms 且文字 ≥ 10 字 → 強判定幻覺 + 自動學習（`shouldAutoLearn: true`）
+  - **Layer 2+3（高 NSP + 詞庫命中）** — `noSpeechProbability > 0.9` 且 `text` 命中幻覺詞庫 → 強判定幻覺
+  - **雙弱可疑** — `noSpeechProbability > 0.7` 且錄音 < 2000ms 且文字 ≥ 15 字 → 組合判定幻覺
+  - **其他** — 放行，正常流程
+- **幻覺攔截行為** — 判定為幻覺 → 不貼上，HUD 顯示「未偵測到語音」，寫入 `transcriptions` 表 `status: 'failed'`，設定重送狀態（`canRetry`）
+- **自動學習** — Layer 1 觸發時自動加入 `hallucination_terms` 表（`source: 'auto'`），emit `hallucination:learned` 事件通知 HUD 顯示藍色通知
+- **內建幻覺詞庫** — `src/lib/builtinHallucinationTerms.ts`，4 語言（zh/en/ja/ko），App 啟動時 `INSERT OR IGNORE` 寫入 DB（冪等性）
+- **詞庫查詢** — `useHallucinationStore.getTermListForDetection(locale)` 合併 DB 自訂詞 + 純函式內建詞（去重），DB 查詢失敗時仍回傳內建詞（graceful degradation）
+- **整合位置** — `useVoiceFlowStore` 的 `handleStopRecording()` 和 `handleRetryTranscription()` 在轉錄結果回傳後、`isEmptyTranscription` 檢查之後執行幻覺偵測
+- **`isEmptyTranscription()`** — 仍保留，只攔截完全空白文字（`!rawText.trim()`），與幻覺偵測互補
 
 #### 轉錄語言分離（TranscriptionLocale）
 
@@ -287,14 +317,39 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Singleton 防禦模式** — `initializeDatabase()` 使用 local `connection` 變數執行所有 schema DDL，**只有全部成功後**才賦值給 module-level `db`。避免「半初始化狀態」——`getDatabase()` 返回無表的空連線
 - **Tauri 權限** — `sql:default` 僅包含 `allow-load/select/close`（唯讀），寫入操作（`CREATE TABLE`, `INSERT`, `UPDATE`, `DELETE`）需要在 `capabilities/default.json` 額外加上 `sql:allow-execute`
 - **WAL 模式** — `PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;`
-- **表命名** — 複數 snake_case（`transcriptions`, `vocabulary`, `api_usage`）
 - **欄位命名** — snake_case（`raw_text`, `was_enhanced`）
 - **主鍵** — `TEXT PRIMARY KEY`（UUID，前端 `crypto.randomUUID()` 產生）
 - **時間戳** — `created_at TEXT DEFAULT (datetime('now'))`
 - **操作限制** — SQLite 操作只從 Pinia store actions 發起，元件不可直接執行 SQL
 - **SQL 參數** — 使用 `$1`, `$2` 位置參數語法（tauri-plugin-sql 規範）
-- **Schema Migration** — `schema_version` 表追蹤版本號，migration 在 `database.ts` 中依序執行（`if (currentVersion < N)` → 建表/改表 → 更新版本號），當前版本：v3（v3 新增 vocabulary.weight/source 欄位 + api_usage CHECK constraint 擴展）
+- **Schema Migration** — `schema_version` 表追蹤版本號，migration 在 `database.ts` 中依序執行（`if (currentVersion < N)` → 建表/改表 → 更新版本號），當前版本：v5
+  - v3：vocabulary.weight/source 欄位 + api_usage CHECK constraint 擴展
+  - v4（Story 4.4）：`ALTER TABLE transcriptions ADD COLUMN audio_file_path TEXT`、`ADD COLUMN status TEXT NOT NULL DEFAULT 'success'`、`CREATE INDEX idx_transcriptions_status`
+  - v5（Story 2.4）：`CREATE TABLE hallucination_terms`（`term TEXT UNIQUE`、`source TEXT CHECK(source IN ('builtin','auto','manual'))`、`locale TEXT`）
+- **TRANSACTION Migration 模式** — v4 起使用 `BEGIN TRANSACTION / COMMIT / ROLLBACK` 包裹每個 migration，確保 schema 變更原子性
 - **外鍵關聯** — `api_usage.transcription_id` → `transcriptions.id`，新增表時必須同步建立 index
+- **表命名** — 複數 snake_case（`transcriptions`, `vocabulary`, `api_usage`, `hallucination_terms`）
+
+#### 錄音檔案管理（Story 4.4）
+
+- **儲存位置** — `{APP_DATA}/recordings/{transcription_id}.wav`（Tauri `app_data_dir()`）
+- **Rust Commands** — `save_recording_file`（寫入 WAV）、`delete_all_recordings`（清除所有）、`cleanup_old_recordings`（按天數清理，回傳被刪 ID list）
+- **DB 關聯** — `transcriptions.audio_file_path` 記錄完整路徑，`transcriptions.status` 記錄 `'success' | 'failed'`
+- **失敗記錄保存** — 空轉錄、錄音太短、API 錯誤、幻覺攔截均寫入 `status: 'failed'` 記錄，保留錄音檔供重送
+- **Asset Protocol 播放** — `convertFileSrc(filePath)` 轉換為 `http://asset.localhost/...` URL，配合 HTML5 `<audio>` 播放，需 CSP `media-src 'self' http://asset.localhost` + `assetProtocol` scope
+- **自動清理** — `main-window.ts` 啟動時 `queueMicrotask` 非阻斷清理，呼叫 `cleanup_old_recordings` 後用回傳 ID list 批次 SQL UPDATE `audio_file_path = NULL`
+- **設定** — `useSettingsStore` 的 `isRecordingAutoCleanupEnabled`（boolean）和 `recordingAutoCleanupDays`（number, default 7）
+
+#### 轉錄重送機制（Story 4.5）
+
+- **Rust Command** — `retranscribe_from_file`：從磁碟讀取 WAV，共用 `send_transcription_request()` 內部函式（與 `transcribe_audio` 共用 Groq API 邏輯）
+- **重送狀態** — `useVoiceFlowStore` 的 `lastFailedTranscriptionId`、`lastFailedAudioFilePath`、`lastFailedRecordingDurationMs`（失敗時設定，新錄音時重置）
+- **`canRetry` computed** — `status === 'error' && lastFailedAudioFilePath !== null && !isRetryAttempt`
+- **重送限制** — 限 1 次（`isRetryAttempt` flag），重送失敗不再提供重送按鈕
+- **`skipRecordSaving` 模式** — 重送成功時 `completePasteFlow({ skipRecordSaving: true })`，跳過 INSERT（避免 PK 衝突），改由 `updateTranscriptionOnRetrySuccess()` UPDATE 現有 failed 記錄
+- **API usage 串接** — 重送路徑的 `saveApiUsageRecordList` 必須在 `updateTranscriptionOnRetrySuccess` 完成後執行（FK 依賴）
+- **幻覺偵測** — 重送結果也需通過幻覺偵測（`handleRetryTranscription` 內整合）
+- **競態處理** — 重送期間使用者觸發新錄音：`handleStartRecording` 重置 retry 狀態，舊 invoke 回來後靜默丟棄
 
 #### API 用量追蹤
 
@@ -303,6 +358,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Whisper 最低計費** — 不足 10 秒一律按 10 秒算（Groq 計費規則）
 - **api_usage 表** — 每次 API 呼叫存一筆記錄（`whisper` / `chat` / `vocabulary_analysis`），由 `useVoiceFlowStore` 在轉錄/AI 整理/字典分析完成後透過 `useHistoryStore` 寫入
 - **型別** — `ApiUsageRecord`, `ChatUsageData`, `EnhanceResult`, `DailyUsageTrend`, `ApiType = "whisper" | "chat" | "vocabulary_analysis"`（定義在 `src/types/transcription.ts`）
+- **Dashboard 統計排除 failed** — `DASHBOARD_STATS_SQL` 和 `DAILY_USAGE_TREND_SQL` 加 `WHERE status != 'failed'`，失敗記錄不計入總使用次數和趨勢圖
 
 ### Testing Rules
 
@@ -341,6 +397,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `use-vocabulary-store.test.ts` | 字典 CRUD + 權重 + AI 推薦詞 + getTopTermListByWeight |
 | `vocabulary-analyzer.test.ts` | AI 分析回傳解析（正常 JSON、空陣列、非 JSON） |
 | `i18n-smoke.test.ts`（component） | mount View + 切換 locale + 斷言 UI 文字切換 |
+| `hallucination-detector.test.ts` | 三層幻覺偵測邏輯 |
+| `builtin-hallucination-terms.test.ts` | 多語言內建詞庫 + locale 映射 |
 | `smoke.test.ts`（e2e） | 端對端冒煙測試 |
 
 #### 測試規則
@@ -392,7 +450,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 ```
 src/
 ├── components/           # 共用 UI 元件
-│   ├── NotchHud.vue     # HUD 6 態狀態顯示（自訂動畫引擎）
+│   ├── NotchHud.vue     # HUD 7 態狀態顯示（含 cancelled，自訂動畫引擎）
 │   ├── AccessibilityGuide.vue # macOS 輔助使用權限引導
 │   ├── AppSidebar.vue   # Dashboard 側邊欄（shadcn Sidebar）
 │   ├── DashboardUsageChart.vue # API 用量趨勢圖表（unovis）
@@ -419,6 +477,8 @@ src/
 │   ├── modelRegistry.ts     # LLM/Whisper/字典分析 模型註冊、價格、Badge、下架遷移
 │   ├── keycodeMap.ts        # DOM event.code → 平台原生 keycode 映射
 │   ├── errorUtils.ts        # 錯誤訊息本地化（繁體中文）
+│   ├── hallucinationDetector.ts   # 三層幻覺偵測純函式
+│   ├── builtinHallucinationTerms.ts # 多語言內建幻覺詞庫
 │   ├── formatUtils.ts       # 時間/文字格式化工具
 │   ├── apiPricing.ts        # API 費用上限計算（Whisper + LLM）
 │   └── utils.ts             # cn() shadcn-vue 工具函式
@@ -426,14 +486,16 @@ src/
 │   ├── useSettingsStore.ts      # 快捷鍵 / API Key / AI Prompt / 開機啟動 / UI locale / 轉錄 locale / Whisper 語言 / 字典分析模型
 │   ├── useHistoryStore.ts       # 歷史記錄 CRUD + Dashboard 統計 + 分頁
 │   ├── useVocabularyStore.ts    # 詞彙字典 CRUD + 權重系統 + AI 推薦詞管理
+│   ├── useHallucinationStore.ts   # 幻覺詞庫 CRUD + 偵測查詢 + 內建詞初始化
 │   └── useVoiceFlowStore.ts     # 錄音/轉錄/AI 整理/貼上/修正偵測/字典學習完整流程
 ├── views/                # Main Window 頁面
 │   ├── DashboardView.vue    # 統計卡片 + 最近轉錄列表
 │   ├── HistoryView.vue      # 歷史記錄搜尋與管理
 │   ├── DictionaryView.vue   # 詞彙字典 CRUD
+│   ├── HallucinationView.vue  # 幻覺詞庫管理（內建/自動/手動三類）
 │   └── SettingsView.vue     # 快捷鍵 / API Key / AI Prompt 設定
 ├── types/                # TypeScript 型別定義
-│   ├── index.ts             # HudStatus, TriggerMode, HudTargetPosition 等共用型別
+│   ├── index.ts             # HudStatus（含 cancelled）, TriggerMode, HudTargetPosition 等共用型別
 │   ├── transcription.ts     # TranscriptionRecord, DashboardStats, ApiUsageRecord, DailyUsageTrend
 │   ├── vocabulary.ts        # VocabularyEntry（含 weight, source）
 │   ├── settings.ts          # TriggerKey (含右側修飾鍵: rightOption, rightControl), HotkeyConfig, SettingsDto
@@ -566,6 +628,11 @@ src/
 - **❌ 硬編碼模型 ID** — 模型 ID 必須從 `modelRegistry.ts` 的 type union（`LlmModelId` / `VocabularyAnalysisModelId` / `WhisperModelId`）取值，禁止字串硬編碼。新增/移除模型時必須同時更新 type、清單、預設值
 - **❌ 忽略下架模型遷移** — 新模型取代舊模型時必須在 `DECOMMISSIONED_MODEL_MAP` 加入舊 ID → 新 ID 映射，否則舊版使用者升級後設定會 fallback 到預設而非指定替代
 - **❌ 字典分析使用 enhancer 模型清單** — 字典分析（`vocabularyAnalyzer.ts`）和文字整理（`enhancer.ts`）使用完全獨立的模型清單（`VOCABULARY_ANALYSIS_MODEL_LIST` vs `LLM_MODEL_LIST`）和 ID 型別（`VocabularyAnalysisModelId` vs `LlmModelId`），不可混用
+- **❌ abort 後未檢查 `isAborted` 繼續執行** — `handleStopRecording` / `handleRetryTranscription` 中每個 `await` 之後及外層 `catch` 必須加 `if (isAborted.value) return;`，否則 abort 引發的錯誤或舊結果會覆蓋 cancelled 狀態。`handleStartRecording` 的 `await invoke("start_recording")` 之後也需要檢查
+- **❌ 使用 ESC（keycode 53 / VK 0x1B）作為 Custom trigger key** — ESC 已保留為全域中斷鍵，`keycodeMap.ts` 的 `getDangerousKeyWarning("Escape")` 回傳 null（不走 warning 路徑），由 `getEscapeReservedMessage()` 提供 hard block 錯誤訊息
+- **❌ 重送成功時 INSERT 新 transcription 記錄** — 重送路徑必須使用 `completePasteFlow({ skipRecordSaving: true })` + `updateTranscriptionOnRetrySuccess()` UPDATE 現有 failed 記錄，禁止 INSERT（PK 衝突 + FK 787 錯誤）
+- **❌ 重送的 API usage 不等 transcription UPDATE 完成** — `saveApiUsageRecordList` 必須串接在 `updateTranscriptionOnRetrySuccess().then()` 之後，確保 FK 依賴正確
+- **❌ HUD 視窗執行 `initializeBuiltinTerms()`** — 內建幻覺詞初始化只由 Dashboard（`main-window.ts`）執行，HUD 不寫 DB（避免雙視窗競態），`getTermListForDetection()` 用純函式 fallback
 
 #### 資料映射陷阱
 
@@ -588,7 +655,7 @@ src/
 
 #### 安全規則
 
-- **CSP 硬限制** — `default-src 'self'; connect-src 'self' https://api.groq.com; style-src 'self' 'unsafe-inline'; script-src 'self'`
+- **CSP 硬限制** — `default-src 'self'; connect-src 'self' https://api.groq.com; media-src 'self' http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'`
 - **API Key 不出本地** — 只在 tauri-plugin-store 中，不上傳、不寫入日誌、不透過 Events 傳播
 - **macOS 權限** — Accessibility 權限是全域熱鍵監聽的前提（CGEventTap）
 - **macOS Entitlements** — 需 `Entitlements.plist`，`macOSPrivateApi: true`
@@ -628,4 +695,4 @@ src/
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-03-15 (v7 — 模型註冊架構重構：字典分析模型獨立、下架遷移機制、幻覺檢測策略修正、SettingsKey 擴展)
+Last Updated: 2026-03-15 (v9 — Stories 1.5/4.4/4.5/2.4：三層幻覺偵測架構、錄音檔管理、轉錄重送機制、幻覺詞庫管理頁面)
