@@ -25,8 +25,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useFeedbackMessage } from "./composables/useFeedbackMessage";
-import { listenToEvent, VOCABULARY_CHANGED } from "./composables/useTauriEvents";
+import { listenToEvent, VOCABULARY_CHANGED, HALLUCINATION_CHANGED } from "./composables/useTauriEvents";
 import { useVocabularyStore } from "./stores/useVocabularyStore";
+import { useHallucinationStore } from "./stores/useHallucinationStore";
 import { captureError } from "./lib/sentry";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import type { UpdateCheckResult } from "./lib/autoUpdater";
@@ -192,13 +193,21 @@ const isUpdateBusy = computed(() =>
 
 
 const vocabularyStore = useVocabularyStore();
+const hallucinationStore = useHallucinationStore();
 let unlistenVocabularyChanged: UnlistenFn | null = null;
+let unlistenHallucinationChanged: UnlistenFn | null = null;
 
 onMounted(async () => {
   // 監聽詞彙變更（HUD 視窗 AI 新增詞彙時同步 Dashboard）
   unlistenVocabularyChanged = await listenToEvent(VOCABULARY_CHANGED, () => {
     console.log("[main-window] VOCABULARY_CHANGED received, refreshing termList");
     void vocabularyStore.fetchTermList();
+  });
+
+  // 監聽幻覺詞庫變更（HUD 視窗自動學習時同步 Dashboard）
+  unlistenHallucinationChanged = await listenToEvent(HALLUCINATION_CHANGED, () => {
+    console.log("[main-window] HALLUCINATION_CHANGED received, refreshing hallucination termList");
+    void hallucinationStore.fetchTermList();
   });
 
   // macOS 無障礙權限檢查
@@ -224,6 +233,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   unlistenVocabularyChanged?.();
+  unlistenHallucinationChanged?.();
 });
 </script>
 

@@ -49,6 +49,8 @@ pub struct WaveformPayload {
 #[serde(rename_all = "camelCase")]
 pub struct StopRecordingResult {
     recording_duration_ms: f64,
+    peak_energy_level: f32,
+    rms_energy_level: f32,
 }
 
 // ========== State ==========
@@ -199,11 +201,29 @@ pub fn stop_recording(
     // Encode WAV in memory
     let wav_data = encode_wav(&samples, handle.sample_rate)?;
 
+    // Calculate peak & RMS energy levels (0.0 = silence, 1.0 = max volume)
+    let (peak_energy_level, rms_energy_level) = if samples.is_empty() {
+        (0.0_f32, 0.0_f32)
+    } else {
+        let mut peak = 0.0_f32;
+        let mut sum_squares = 0.0_f64;
+        for &s in samples.iter() {
+            let abs_normalized = (s as f32).abs() / i16::MAX as f32;
+            peak = peak.max(abs_normalized);
+            let norm_f64 = s as f64 / i16::MAX as f64;
+            sum_squares += norm_f64 * norm_f64;
+        }
+        let rms = (sum_squares / samples.len() as f64).sqrt() as f32;
+        (peak, rms)
+    };
+
     println!(
-        "[audio-recorder] WAV encoded: {} samples, {} bytes, {:.0}ms",
+        "[audio-recorder] WAV encoded: {} samples, {} bytes, {:.0}ms, peakEnergy={:.4}, rmsEnergy={:.4}",
         samples.len(),
         wav_data.len(),
         recording_duration_ms,
+        peak_energy_level,
+        rms_energy_level,
     );
 
     // Store WAV buffer for transcription to consume
@@ -215,6 +235,8 @@ pub fn stop_recording(
 
     Ok(StopRecordingResult {
         recording_duration_ms,
+        peak_energy_level,
+        rms_energy_level,
     })
 }
 

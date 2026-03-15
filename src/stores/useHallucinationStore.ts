@@ -4,14 +4,14 @@ import { getDatabase } from "../lib/database";
 import { extractErrorMessage } from "../lib/errorUtils";
 import { captureError } from "../lib/sentry";
 import {
-  BUILTIN_HALLUCINATION_TERMS,
-  getBuiltinTermListForLocale,
-} from "../lib/builtinHallucinationTerms";
+  emitEvent,
+  HALLUCINATION_CHANGED,
+} from "../composables/useTauriEvents";
 import type { TranscriptionLocale } from "../i18n/languageConfig";
 
 // ── 型別 ──
 
-export type HallucinationTermSource = "builtin" | "auto" | "manual";
+export type HallucinationTermSource = "auto" | "manual";
 
 export interface HallucinationTermEntry {
   id: string;
@@ -53,7 +53,7 @@ const INSERT_TERM_SQL = `
 `;
 
 const DELETE_TERM_SQL = `
-  DELETE FROM hallucination_terms WHERE id = $1 AND source != 'builtin'
+  DELETE FROM hallucination_terms WHERE id = $1
 `;
 
 // ── Store ──
@@ -94,6 +94,10 @@ export const useHallucinationStore = defineStore("hallucination", () => {
       const db = getDatabase();
       await db.execute(INSERT_TERM_SQL, [id, trimmedTerm, source, locale]);
       await fetchTermList();
+      void emitEvent(HALLUCINATION_CHANGED, {
+        action: "added",
+        term: trimmedTerm,
+      });
     } catch (error) {
       const errorMessage = extractErrorMessage(error);
       // UNIQUE constraint → 靜默忽略（INSERT OR IGNORE 已處理，此處為防禦性捕獲）
@@ -109,6 +113,7 @@ export const useHallucinationStore = defineStore("hallucination", () => {
       const db = getDatabase();
       await db.execute(DELETE_TERM_SQL, [id]);
       await fetchTermList();
+      void emitEvent(HALLUCINATION_CHANGED, { action: "removed" });
     } catch (error) {
       console.error(
         `[hallucination-store] removeTerm failed: ${extractErrorMessage(error)}`,
@@ -119,34 +124,28 @@ export const useHallucinationStore = defineStore("hallucination", () => {
   }
 
   /**
-   * 取得偵測用的幻覺詞清單（合併 DB 自訂詞 + 內建詞庫）。
+   * 取得偵測用的幻覺詞清單（從 DB 查詢自動學習 + 手動新增的詞）。
    *
    * @param transcriptionLocale - 當前轉錄語言設定
    */
   async function getTermListForDetection(
     transcriptionLocale: TranscriptionLocale,
   ): Promise<string[]> {
-    // 1. 取得內建詞庫（純函式，不依賴 DB）
-    const builtinTermList = getBuiltinTermListForLocale(transcriptionLocale);
-
-    // 2. 從 DB 查詢使用者自訂/自動學習的幻覺詞
     const whisperCodeList = resolveWhisperCodeList(transcriptionLocale);
-    let dbTermList: string[] = [];
 
     try {
       const db = getDatabase();
-      if (whisperCodeList.length > 0) {
-        // 動態構建 IN 查詢（避免 SQL injection：使用參數化的多次查詢後合併）
-        const allDbTermList: string[] = [];
-        for (const code of whisperCodeList) {
-          const rows = await db.select<{ term: string }[]>(
-            "SELECT term FROM hallucination_terms WHERE locale = $1",
-            [code],
-          );
-          allDbTermList.push(...rows.map((r) => r.term));
-        }
-        dbTermList = allDbTermList;
+      if (whisperCodeList.length === 0) return [];
+
+      const allTermList: string[] = [];
+      for (const code of whisperCodeList) {
+        const rows = await db.select<{ term: string }[]>(
+          "SELECT term FROM hallucination_terms WHERE locale = $1",
+          [code],
+        );
+        allTermList.push(...rows.map((r) => r.term));
       }
+      return [...new Set(allTermList)];
     } catch (error) {
       console.error(
         `[hallucination-store] getTermListForDetection DB query failed: ${extractErrorMessage(error)}`,
@@ -155,36 +154,28 @@ export const useHallucinationStore = defineStore("hallucination", () => {
         source: "hallucination",
         step: "get-detection-list",
       });
-      // DB 查詢失敗時仍回傳內建詞庫
+      return [];
     }
-
-    // 3. 合併去重
-    return [...new Set([...builtinTermList, ...dbTermList])];
   }
 
   /**
-   * App 啟動時將內建幻覺詞寫入 DB。
-   * 使用 INSERT OR IGNORE 確保冪等性。
+   * App 啟動時清除舊版內建幻覺詞（source='builtin'）。
+   * 內建詞庫已移除，改為純自動學習 + 手動新增機制。
    */
-  async function initializeBuiltinTerms(): Promise<void> {
+  async function removeBuiltinTerms(): Promise<void> {
     try {
       const db = getDatabase();
-      for (const [locale, termListForLocale] of Object.entries(
-        BUILTIN_HALLUCINATION_TERMS,
-      )) {
-        for (const term of termListForLocale) {
-          const id = crypto.randomUUID();
-          await db.execute(INSERT_TERM_SQL, [id, term, "builtin", locale]);
-        }
-      }
-      console.log("[hallucination-store] Builtin terms initialized");
+      await db.execute(
+        "DELETE FROM hallucination_terms WHERE source = 'builtin'",
+      );
+      console.log("[hallucination-store] Builtin terms removed");
     } catch (error) {
       console.error(
-        `[hallucination-store] initializeBuiltinTerms failed: ${extractErrorMessage(error)}`,
+        `[hallucination-store] removeBuiltinTerms failed: ${extractErrorMessage(error)}`,
       );
       captureError(error, {
         source: "hallucination",
-        step: "initialize-builtin",
+        step: "remove-builtin",
       });
     }
   }
@@ -205,7 +196,7 @@ export const useHallucinationStore = defineStore("hallucination", () => {
     addTerm,
     removeTerm,
     getTermListForDetection,
-    initializeBuiltinTerms,
+    removeBuiltinTerms,
   };
 });
 

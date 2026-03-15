@@ -4,6 +4,8 @@ export interface WaveformPayload {
 
 export interface StopRecordingResult {
   recordingDurationMs: number;
+  peakEnergyLevel: number;
+  rmsEnergyLevel: number;
 }
 
 export interface TranscriptionResult {

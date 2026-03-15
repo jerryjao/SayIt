@@ -35,12 +35,12 @@ async function bootstrap() {
   try {
     await initializeDatabase();
 
-    // 初始化內建幻覺詞庫（DB 初始化成功後才執行）
+    // 清除舊版內建幻覺詞（已改為純自動學習 + 手動新增機制）
     const { useHallucinationStore } = await import(
       "./stores/useHallucinationStore"
     );
     const hallucinationStore = useHallucinationStore();
-    await hallucinationStore.initializeBuiltinTerms();
+    await hallucinationStore.removeBuiltinTerms();
   } catch (err) {
     const message = extractErrorMessage(err);
     console.error("[main-window] Database init failed:", message);

@@ -5,7 +5,7 @@ import { useSettingsStore } from "../stores/useSettingsStore";
 import { extractErrorMessage } from "../lib/errorUtils";
 import { useFeedbackMessage } from "../composables/useFeedbackMessage";
 import { useI18n } from "vue-i18n";
-import { Plus, Trash2, Info, ShieldAlert, Bot, Hand } from "lucide-vue-next";
+import { Plus, Trash2, Info, Bot, Hand } from "lucide-vue-next";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -35,10 +35,6 @@ const showDuplicateHint = computed(
   () =>
     newTermInput.value.trim() !== "" &&
     hallucinationStore.isDuplicateTerm(newTermInput.value),
-);
-
-const builtinTermList = computed(() =>
-  hallucinationStore.termList.filter((entry) => entry.source === "builtin"),
 );
 
 const autoTermList = computed(() =>
@@ -260,40 +256,6 @@ onBeforeUnmount(() => {
         </CardContent>
       </Card>
 
-      <!-- Built-in Section -->
-      <Card v-if="builtinTermList.length > 0">
-        <CardHeader class="pb-3">
-          <div class="flex items-center gap-2">
-            <CardTitle class="text-base">
-              <ShieldAlert class="mr-1 inline h-4 w-4" />
-              {{ $t("hallucination.sourceBuiltin") }}
-            </CardTitle>
-            <Badge variant="secondary">{{ builtinTermList.length }}</Badge>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead class="w-full">{{ $t("hallucination.termHeader") }}</TableHead>
-                <TableHead class="w-20 text-center">{{ $t("hallucination.localeHeader") }}</TableHead>
-                <TableHead class="w-40">{{ $t("hallucination.dateHeader") }}</TableHead>
-                <TableHead class="w-20 text-right">{{ $t("hallucination.actionHeader") }}</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              <TableRow v-for="entry in builtinTermList" :key="entry.id">
-                <TableCell class="font-medium text-foreground">{{ entry.term }}</TableCell>
-                <TableCell class="text-center text-muted-foreground">{{ entry.locale }}</TableCell>
-                <TableCell class="text-muted-foreground">{{ formatDate(entry.createdAt) }}</TableCell>
-                <TableCell class="text-right">
-                  <span class="text-xs text-muted-foreground">-</span>
-                </TableCell>
-              </TableRow>
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
     </div>
   </div>
 </template>
