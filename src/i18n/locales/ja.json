@@ -227,7 +227,8 @@
     "retryFailed": "認識失敗、もう一度録音してください",
     "hallucinationLearnedLabel": "幻覚語を学習",
     "hallucinationLearned": "{terms}",
-    "hallucinationLearnedTruncated": "{terms} 他 {count} 語"
+    "hallucinationLearnedTruncated": "{terms} 他 {count} 語",
+    "cancelled": "キャンセル"
   },
   "errors": {
     "apiKeyEmpty": "API Key は空にできません",
@@ -269,7 +270,8 @@
       "presetHint": "このキーはシンプルモードで利用可能です。シンプルモードへの切り替えをお勧めします",
       "recordingTimeout": "キーが検出されませんでした。一部のシステムキー（Fn、メディアキー）は録音できません。シンプルモードをご利用ください。",
       "unsupportedKey": "このキーはサポートされていません",
-      "keycodeCollision": "このキーは macOS 上で {target} と同じキーコードを共有しており、両方が同時にトリガーされます"
+      "keycodeCollision": "このキーは macOS 上で {target} と同じキーコードを共有しており、両方が同時にトリガーされます",
+      "escReserved": "ESC キーはグローバル中断キーとして予約されており、トリガーキーとして使用できません"
     }
   },
   "format": {

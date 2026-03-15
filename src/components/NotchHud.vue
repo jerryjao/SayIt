@@ -24,6 +24,7 @@ type VisualMode =
   | "transcribing"
   | "success"
   | "error"
+  | "cancelled"
   | "collapsing"
   | "learned";
 
@@ -158,7 +159,8 @@ const isHighPriorityMode = computed(() => {
     mode === "morphing" ||
     mode === "transcribing" ||
     mode === "success" ||
-    mode === "error"
+    mode === "error" ||
+    mode === "cancelled"
   );
 });
 
@@ -324,6 +326,13 @@ watch(
     if (nextStatus === "error") {
       stopWaveformAnimation();
       visualMode.value = "error";
+      return;
+    }
+
+    if (nextStatus === "cancelled") {
+      stopWaveformAnimation();
+      visualMode.value = "cancelled";
+      return;
     }
   },
   { immediate: true },
@@ -371,9 +380,25 @@ onUnmounted(() => {
     >
       <div class="notch-content">
         <div class="notch-left">
+          <!-- Cancelled: X icon -->
+          <svg
+            v-if="visualMode === 'cancelled'"
+            class="cancelled-icon-svg"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="rgba(255, 255, 255, 0.6)"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
           <!-- Learned: book icon -->
           <svg
-            v-if="visualMode === 'learned'"
+            v-else-if="visualMode === 'learned'"
             class="learned-icon-svg"
             width="18"
             height="18"
@@ -420,7 +445,10 @@ onUnmounted(() => {
         <div class="notch-camera-gap" />
 
         <div class="notch-right">
-          <span v-if="visualMode === 'learned'" class="learned-label">
+          <span v-if="visualMode === 'cancelled'" class="cancelled-label">
+            {{ $t('voiceFlow.cancelled') }}
+          </span>
+          <span v-else-if="visualMode === 'learned'" class="learned-label">
             {{ learnedNotificationType === 'hallucination' ? $t('voiceFlow.hallucinationLearnedLabel') : $t('voiceFlow.vocabularyLearnedLabel') }}
           </span>
           <span v-else-if="visualMode === 'recording'" class="elapsed-timer">
@@ -685,6 +713,29 @@ onUnmounted(() => {
 }
 
 @keyframes learnedTextFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Cancelled: X icon + label ---- */
+.cancelled-icon-svg {
+  animation: cancelledIconFadeIn 0.3s ease-out;
+}
+
+@keyframes cancelledIconFadeIn {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.cancelled-label {
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+  animation: cancelledTextFadeIn 0.3s ease-out;
+}
+
+@keyframes cancelledTextFadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }

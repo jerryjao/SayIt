@@ -484,8 +484,15 @@ const MAC_KEYCODE_COLLISION_KEYS: Set<string> = new Set([
   "Pause", // keycode 113 = F15
 ]);
 
+export function getEscapeReservedMessage(): string {
+  return i18n.global.t("errors.hotkey.escReserved");
+}
+
 export function getDangerousKeyWarning(domCode: string): string | null {
   if (!isDangerousKey(domCode)) return null;
+
+  // ESC is a hard block — handled separately in SettingsView
+  if (domCode === "Escape") return null;
 
   if (domCode === "CapsLock") {
     return getHotkeyCapslockWarning();

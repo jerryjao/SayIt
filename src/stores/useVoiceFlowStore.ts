@@ -37,6 +37,7 @@ import {
   CORRECTION_MONITOR_RESULT,
   VOCABULARY_LEARNED,
   HALLUCINATION_LEARNED,
+  ESCAPE_PRESSED,
   emitEvent,
   listenToEvent,
 } from "../composables/useTauriEvents";
@@ -58,6 +59,7 @@ import { useSettingsStore } from "./useSettingsStore";
 const SUCCESS_DISPLAY_DURATION_MS = 1000;
 const ERROR_DISPLAY_DURATION_MS = 3000;
 const START_SOUND_DURATION_MS = 400;
+const CANCELLED_DISPLAY_DURATION_MS = 1000;
 
 /**
  * 判斷轉錄結果是否為空（無內容可貼上）。
@@ -95,6 +97,8 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   const lastFailedTranscriptionId = ref<string | null>(null);
   const lastFailedAudioFilePath = ref<string | null>(null);
   const lastFailedRecordingDurationMs = ref<number>(0);
+  const isAborted = ref<boolean>(false);
+  let abortController: AbortController | null = null;
   const isRetryAttempt = ref<boolean>(false);
   const canRetry = computed<boolean>(
     () =>
@@ -347,6 +351,19 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       autoHideTimer = setTimeout(() => {
         transitionTo("idle");
       }, SUCCESS_DISPLAY_DURATION_MS);
+      return;
+    }
+
+    if (nextStatus === "cancelled") {
+      showHud().catch((err) => {
+        writeErrorLog(
+          `useVoiceFlowStore: showHud failed: ${extractErrorMessage(err)}`,
+        );
+        captureError(err, { source: "voice-flow", step: "showHud" });
+      });
+      autoHideTimer = setTimeout(() => {
+        transitionTo("idle");
+      }, CANCELLED_DISPLAY_DURATION_MS);
       return;
     }
 
@@ -793,9 +810,46 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     }
   }
 
+  function handleEscapeAbort() {
+    const currentStatus = status.value;
+    if (
+      currentStatus === "idle" ||
+      currentStatus === "success" ||
+      currentStatus === "error" ||
+      currentStatus === "cancelled"
+    )
+      return;
+
+    writeInfoLog(`useVoiceFlowStore: ESC abort from ${currentStatus}`);
+    isAborted.value = true;
+    abortController?.abort();
+
+    // 無條件重置 isRecording，避免永久鎖死
+    isRecording.value = false;
+
+    if (currentStatus === "recording") {
+      void invoke("stop_recording").catch(() => {});
+      stopElapsedTimer();
+    }
+
+    // 完整清理所有進行中的資源
+    clearDelayedMuteTimer();
+    stopMonitorPolling();
+    stopCorrectionSnapshotPolling();
+    cleanupCorrectionMonitorListener();
+    void restoreSystemAudio();
+
+    // 重置 toggle 模式狀態
+    void invoke("reset_hotkey_state").catch(() => {});
+
+    transitionTo("cancelled", t("voiceFlow.cancelled"));
+  }
+
   async function handleStartRecording() {
     if (isRecording.value) return;
     isRecording.value = true;
+    isAborted.value = false;
+    abortController = new AbortController();
     lastWasModified.value = null;
 
     // 重置重送狀態（新錄音開始時清除上次失敗的重送資訊）
@@ -811,6 +865,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         void muteSystemAudioIfEnabled();
       }, START_SOUND_DURATION_MS);
       await invoke("start_recording");
+      if (isAborted.value) return;
       startElapsedTimer();
       transitionTo("recording", t("voiceFlow.recording"));
       writeInfoLog("useVoiceFlowStore: recording started");
@@ -827,6 +882,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
 
   async function handleStopRecording() {
     if (!isRecording.value) return;
+    if (isAborted.value) return;
 
     clearDelayedMuteTimer();
     await restoreSystemAudio();
@@ -841,6 +897,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
 
     try {
       const stopResult = await invoke<StopRecordingResult>("stop_recording");
+      if (isAborted.value) return;
       recordingDurationMs = stopResult.recordingDurationMs;
 
       // 錄音檔儲存（不阻斷主流程）
@@ -909,6 +966,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         modelId: settingsStore.selectedWhisperModelId,
         language: settingsStore.getWhisperLanguageCode(),
       });
+      if (isAborted.value) return;
 
       writeInfoLog(`轉錄原文: "${result.rawText}"`);
 
@@ -1038,7 +1096,9 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
             vocabularyTermList:
               enhancementTermList.length > 0 ? enhancementTermList : undefined,
             modelId: settingsStore.selectedLlmModelId,
+            signal: abortController?.signal,
           });
+          if (isAborted.value) return;
 
           const enhancementDurationMs =
             performance.now() - enhancementStartTime;
@@ -1072,6 +1132,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
             )}, enhancementDurationMs=${Math.round(enhancementDurationMs)}`,
           );
         } catch (enhanceError) {
+          if (isAborted.value) return;
           const fallbackEnhancementDurationMs =
             performance.now() - enhancementStartTime;
           const enhanceErrorDetail = getEnhancementErrorMessage(enhanceError);
@@ -1129,6 +1190,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
         );
       }
     } catch (error) {
+      if (isAborted.value) return;
       // AC2: API 錯誤時仍寫入 failed 記錄（如果有 audioFilePath）
       if (audioFilePath) {
         const failedRecord = buildTranscriptionRecord({
@@ -1165,6 +1227,8 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       return;
     }
 
+    isAborted.value = false;
+    abortController = new AbortController();
     isRetryAttempt.value = true;
     clearAutoHideTimer();
     transitionTo("transcribing", t("voiceFlow.transcribing"));
@@ -1203,6 +1267,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
           language: settingsStore.getWhisperLanguageCode(),
         },
       );
+      if (isAborted.value) return;
 
       writeInfoLog(`重送轉錄原文: "${result.rawText}"`);
 
@@ -1253,7 +1318,9 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
             vocabularyTermList:
               enhancementTermList.length > 0 ? enhancementTermList : undefined,
             modelId: settingsStore.selectedLlmModelId,
+            signal: abortController?.signal,
           });
+          if (isAborted.value) return;
 
           const enhancementDurationMs =
             performance.now() - enhancementStartTime;
@@ -1303,6 +1370,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
               ),
             );
         } catch (enhanceError) {
+          if (isAborted.value) return;
           const fallbackEnhancementDurationMs =
             performance.now() - enhancementStartTime;
           writeErrorLog(
@@ -1404,6 +1472,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       lastFailedRecordingDurationMs.value = 0;
       isRetryAttempt.value = false;
     } catch (error) {
+      if (isAborted.value) return;
       // 重送也失敗（API 錯誤等）→ 不再提供重送
       transitionTo("error", t("voiceFlow.retryFailed"));
       lastFailedAudioFilePath.value = null;
@@ -1425,6 +1494,9 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     await settingsStore.loadSettings();
 
     const listeners = await Promise.all([
+      listenToEvent(ESCAPE_PRESSED, () => {
+        handleEscapeAbort();
+      }),
       listenToEvent(HOTKEY_PRESSED, () => {
         void handleStartRecording();
       }),

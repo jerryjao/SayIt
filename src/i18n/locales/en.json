@@ -227,7 +227,8 @@
     "retryFailed": "Recognition failed, please record again",
     "hallucinationLearnedLabel": "Hallucination learned",
     "hallucinationLearned": "{terms}",
-    "hallucinationLearnedTruncated": "{terms} +{count} more"
+    "hallucinationLearnedTruncated": "{terms} +{count} more",
+    "cancelled": "Cancelled"
   },
   "errors": {
     "apiKeyEmpty": "API Key cannot be empty",
@@ -269,7 +270,8 @@
       "presetHint": "This key is available in Preset mode. Consider switching to Preset mode",
       "recordingTimeout": "No key detected. Some system keys (Fn, media keys) cannot be recorded. Please use Preset mode.",
       "unsupportedKey": "This key is not supported",
-      "keycodeCollision": "This key shares the same keycode as {target} on macOS. Both will trigger simultaneously"
+      "keycodeCollision": "This key shares the same keycode as {target} on macOS. Both will trigger simultaneously",
+      "escReserved": "ESC is reserved as the global abort key and cannot be used as a trigger key"
     }
   },
   "format": {

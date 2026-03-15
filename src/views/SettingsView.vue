@@ -127,8 +127,9 @@ async function handleKeydownForRecording(event: KeyboardEvent) {
   event.preventDefault();
   event.stopPropagation();
 
-  // Escape cancels recording
+  // ESC 已保留為全域中斷鍵，拒絕設定並顯示錯誤
   if (event.code === "Escape") {
+    hotkeyFeedback.show("error", settingsStore.getEscapeReservedMessage());
     stopKeyRecording();
     return;
   }

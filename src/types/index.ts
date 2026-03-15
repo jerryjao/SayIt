@@ -4,7 +4,8 @@ export type HudStatus =
   | "transcribing"
   | "enhancing"
   | "success"
-  | "error";
+  | "error"
+  | "cancelled";
 
 export interface HudState {
   status: HudStatus;

@@ -227,7 +227,8 @@
     "retryFailed": "辨識失敗，請重新錄音",
     "hallucinationLearnedLabel": "已學習幻覺詞",
     "hallucinationLearned": "{terms}",
-    "hallucinationLearnedTruncated": "{terms} 等 {count} 個"
+    "hallucinationLearnedTruncated": "{terms} 等 {count} 個",
+    "cancelled": "已取消"
   },
   "errors": {
     "apiKeyEmpty": "API Key 不可為空白",
@@ -269,7 +270,8 @@
       "presetHint": "此按鍵已在簡易模式中可用，建議切換至簡易模式",
       "recordingTimeout": "未偵測到按鍵。部分系統鍵（Fn、媒體鍵）無法錄製，請使用簡易模式。",
       "unsupportedKey": "不支援此按鍵",
-      "keycodeCollision": "此按鍵在 macOS 上與 {target} 共用相同代碼，兩者會同時觸發"
+      "keycodeCollision": "此按鍵在 macOS 上與 {target} 共用相同代碼，兩者會同時觸發",
+      "escReserved": "ESC 鍵已保留為全域中斷鍵，無法作為觸發鍵使用"
     }
   },
   "format": {

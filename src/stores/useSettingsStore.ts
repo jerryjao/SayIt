@@ -15,6 +15,7 @@ import {
   getPlatformKeycode,
   isPresetEquivalentKey,
   getDangerousKeyWarning,
+  getEscapeReservedMessage,
 } from "../lib/keycodeMap";
 import {
   extractErrorMessage,
@@ -921,6 +922,7 @@ export const useSettingsStore = defineStore("settings", () => {
     getKeyDisplayName,
     isPresetEquivalentKey,
     getDangerousKeyWarning,
+    getEscapeReservedMessage,
     getHotkeyRecordingTimeoutMessage,
     getHotkeyUnsupportedKeyMessage,
     getHotkeyPresetHint,

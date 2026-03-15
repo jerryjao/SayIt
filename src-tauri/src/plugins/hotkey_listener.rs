@@ -167,6 +167,7 @@ mod macos_keycodes {
     pub const COMMAND_R: u16 = 54;
     pub const SHIFT_L: u16 = 56;
     pub const SHIFT_R: u16 = 60;
+    pub const ESCAPE: u16 = 53;
 }
 
 #[cfg(target_os = "macos")]
@@ -343,6 +344,12 @@ fn start_event_tap<R: Runtime>(app_handle: AppHandle<R>, state: HotkeyListenerSt
                         }
                     }
                     CGEventType::KeyDown => {
+                        // ESC key detection (before trigger key matching)
+                        if keycode == macos_keycodes::ESCAPE {
+                            let _ = app_handle.emit("escape:pressed", ());
+                            return None;
+                        }
+
                         if trigger == TriggerKey::Fn && keycode == macos_keycodes::FN {
                             // Fallback for Fn key
                             handle_key_event(&app_handle, true, &state);
@@ -417,6 +424,12 @@ fn stop_existing_event_tap(run_loop_ref: &Arc<Mutex<Option<core_foundation::runl
 }
 
 #[tauri::command]
+pub fn reset_hotkey_state(state: tauri::State<'_, HotkeyListenerState>) {
+    state.reset_key_states();
+    println!("[hotkey-listener] Key states reset via command");
+}
+
+#[tauri::command]
 pub fn reinitialize_hotkey_listener<R: Runtime>(app: AppHandle<R>) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -462,6 +475,7 @@ mod windows_hook {
     const VK_RCONTROL: u32 = 0xA3;
     const VK_LMENU: u32 = 0xA4;
     const VK_RMENU: u32 = 0xA5;
+    const VK_ESCAPE: u32 = 0x1B;
 
     // Windows message constants
     const WM_KEYDOWN: u32 = 0x0100;
@@ -472,6 +486,7 @@ mod windows_hook {
     struct HookContext {
         trigger_key: Arc<Mutex<TriggerKey>>,
         key_handler: Box<dyn Fn(bool) + Send + Sync>,
+        escape_handler: Box<dyn Fn() + Send + Sync>,
     }
 
     static CONTEXT: OnceLock<HookContext> = OnceLock::new();
@@ -479,11 +494,15 @@ mod windows_hook {
     pub fn install<R: Runtime>(app_handle: AppHandle<R>, state: HotkeyListenerState) {
         let trigger_key_for_hook = state.trigger_key.clone();
         let app_handle_error = app_handle.clone();
+        let app_handle_escape = app_handle.clone();
         CONTEXT
             .set(HookContext {
                 trigger_key: trigger_key_for_hook,
                 key_handler: Box::new(move |pressed| {
                     handle_key_event(&app_handle, pressed, &state);
+                }),
+                escape_handler: Box::new(move || {
+                    let _ = app_handle_escape.emit("escape:pressed", ());
                 }),
             })
             .ok();
@@ -535,6 +554,12 @@ mod windows_hook {
                 let is_key_up = w == WM_KEYUP || w == WM_SYSKEYUP;
 
                 if is_key_down || is_key_up {
+                    // ESC key detection (before trigger key matching)
+                    if kbd.vkCode == VK_ESCAPE && is_key_down {
+                        (ctx.escape_handler)();
+                        return CallNextHookEx(None, n_code, w_param, l_param);
+                    }
+
                     let trigger = match ctx.trigger_key.try_lock() {
                         Ok(guard) => guard.clone(),
                         Err(_) => return CallNextHookEx(None, n_code, w_param, l_param),
@@ -678,5 +703,32 @@ mod tests {
         let key = TriggerKey::Custom { keycode: 96 }; // F5 on macOS
         assert!(matches_trigger_key_macos(96, &key));
         assert!(!matches_trigger_key_macos(97, &key));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn test_escape_keycode_macos() {
+        assert_eq!(macos_keycodes::ESCAPE, 53);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn test_escape_keycode_windows() {
+        assert_eq!(windows_hook::VK_ESCAPE, 0x1B);
+    }
+
+    #[test]
+    fn test_reset_key_states() {
+        let state = HotkeyListenerState {
+            trigger_key: Arc::new(Mutex::new(TriggerKey::Fn)),
+            trigger_mode: Arc::new(Mutex::new(TriggerMode::Hold)),
+            is_pressed: Arc::new(AtomicBool::new(true)),
+            is_toggled_on: Arc::new(AtomicBool::new(true)),
+            #[cfg(target_os = "macos")]
+            run_loop_ref: Arc::new(Mutex::new(None)),
+        };
+        state.reset_key_states();
+        assert!(!state.is_pressed.load(Ordering::SeqCst));
+        assert!(!state.is_toggled_on.load(Ordering::SeqCst));
     }
 }
