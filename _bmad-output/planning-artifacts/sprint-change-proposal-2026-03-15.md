@@ -433,3 +433,20 @@ So that 我不需要崩潰重講。
 - Whisper 幻覺文字不再直接貼入（問題 1）
 - 中英混講的辨識品質使用者體感改善（問題 4）
 - 使用者可設定 modifier+key 組合觸發（問題 5）
+
+---
+
+## 後續更新記錄
+
+### 2026-03-16：幻覺偵測升級至 v2（四層架構）
+
+問題 1 的三層幻覺偵測架構在實測中發現缺口：背景噪音（冷氣、環境音）導致 `peakEnergyLevel` 超過靜音門檻（0.02），Layer 2 無法觸發。同時 Whisper 對幻覺可能回傳 `noSpeechProbability=0.0`（極度自信的幻覺），原 NSP 相關 Layer 也無法攔截。
+
+**變更：**
+- 移除內建幻覺詞庫（`builtinHallucinationTerms.ts` 已刪除），改為純自動學習 + 手動新增
+- Rust 端 `stop_recording()` 新增 `rms_energy_level`（均方根能量），與 peak 合併單次遍歷計算
+- 新增 Layer 3 背景噪音偵測（取代原 NSP+詞庫 Layer）：
+  - 3a：`rmsEnergy < 0.008` → 極低 RMS，直接攔截（不需要 NSP）
+  - 3b：`rmsEnergy < 0.015 && NSP > 0.7` → 低 RMS + 高 NSP 聯合攔截
+- 原 Layer 3 精確比對改編號為 Layer 4，使用自動學習 + 手動新增的詞庫
+- `noSpeechProbability` 傳入偵測函式但僅作為 Layer 3b 輔助信號

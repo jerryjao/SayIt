@@ -225,7 +225,7 @@ CREATE INDEX idx_transcriptions_created_at ON transcriptions(created_at);
 CREATE TABLE IF NOT EXISTS hallucination_terms (
   id TEXT PRIMARY KEY,
   term TEXT NOT NULL UNIQUE,
-  source TEXT NOT NULL DEFAULT 'auto',  -- 'builtin' | 'auto' | 'manual'
+  source TEXT NOT NULL DEFAULT 'auto',  -- 'auto' | 'manual'（'builtin' 已棄用，App 啟動時清除）
   language TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
@@ -677,7 +677,7 @@ sayit/
 | `delete_all_recordings` | `audio_recorder.rs` | — | `Result<u32, String>`（刪除數量） | 刪除 recordings/ 目錄下所有 WAV 檔案 |
 | `cleanup_old_recordings` | `audio_recorder.rs` | `days: u32` | `Result<u32, String>`（刪除數量） | 刪除超過指定天數的錄音檔 |
 
-- `stop_recording` 回傳型別 `StopRecordingResult` 新增 `peak_energy_level: f32` 欄位，用於判斷錄音是否為靜音
+- `stop_recording` 回傳型別 `StopRecordingResult` 包含 `peak_energy_level: f32`（峰值振幅）和 `rms_energy_level: f32`（均方根能量），兩者合併為單次遍歷計算。RMS 用於四層幻覺偵測的 Layer 3（背景噪音偵測）
 
 **Data Boundaries：**
 

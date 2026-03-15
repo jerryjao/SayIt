@@ -595,8 +595,14 @@ So that 沒講話或很短停頓時不會有亂碼被貼入編輯器。
 
 **Given** 幻覺詞庫頁面（HallucinationView.vue）
 **When** 使用者從側邊欄開啟幻覺詞庫頁面
-**Then** 顯示所有幻覺詞（內建 + 自動學習 + 手動新增）
+**Then** 顯示所有幻覺詞（自動學習 + 手動新增）
 **And** 使用者可手動新增/刪除幻覺詞
+
+> **⚠️ 實作更新（2026-03-16）：** 幻覺偵測已升級為四層架構（v2）。主要變更：
+> - 移除內建幻覺詞庫（`builtinHallucinationTerms.ts` 已刪除），改為純自動學習 + 手動新增
+> - 新增 Layer 3 背景噪音偵測：Rust 端新增 `rms_energy_level` 計算，前端用 `rmsEnergyLevel`（極低 RMS < 0.008 直接攔截）和 `noSpeechProbability`（中低 RMS < 0.015 + NSP > 0.7 聯合攔截）
+> - 原 Layer 3 精確比對改為 Layer 4
+> - 詳見 `project-context.md` 的「幻覺偵測架構（v2）」段落
 
 ---
 

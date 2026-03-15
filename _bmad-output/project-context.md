@@ -1,10 +1,10 @@
 ---
 project_name: 'sayit'
 user_name: 'Jackle'
-date: '2026-03-15'
-sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n', 'smart_dictionary', 'model_registry_v2', 'esc_global_abort']
+date: '2026-03-16'
+sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n', 'smart_dictionary', 'model_registry_v2', 'esc_global_abort', 'hallucination_v2', 'sound_feedback']
 status: 'complete'
-rule_count: 255
+rule_count: 261
 optimized_for_llm: true
 ---
 
@@ -119,7 +119,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **錯誤上報** — 關鍵流程失敗（錄音、轉錄、AI 整理、DB 初始化、bootstrap）必須呼叫 `captureError(error, { source, step })`
 - **context 結構規範** — `captureError(err, { source: "模組名", step: "操作名" })`，`source` 對應模組（`settings`/`voice-flow`/`history`/`database-init`/`bootstrap`），`step` 對應操作（`load`/`save-locale`/`transcribe`）
 - **上報層級** — 只從 store actions 或啟動腳本（`main.ts`, `main-window.ts`）呼叫，`lib/` 層只拋錯不上報
-- **覆蓋範圍** — 59 個 `captureError` 呼叫點：`useVoiceFlowStore`（17）、`useSettingsStore`（10）、`useHistoryStore`（8）、`useVocabularyStore`（6）、`useHallucinationStore`（5）、`main-window.ts`（5）、`MainApp.vue`（3）、`AccessibilityGuide.vue`（3）、`main.ts`（2）
+- **覆蓋範圍** — 61 個 `captureError` 呼叫點：`useVoiceFlowStore`（17）、`useSettingsStore`（11）、`useHistoryStore`（8）、`useVocabularyStore`（6）、`useHallucinationStore`（5）、`main-window.ts`（5）、`MainApp.vue`（3）、`AccessibilityGuide.vue`（3）、`main.ts`（2）、`lib/sentry.ts`（1）
 - **全域錯誤處理** — 兩個視窗各自設定 `app.config.errorHandler`（Vue 元件錯誤）+ `window.addEventListener("unhandledrejection")`（未捕獲 Promise），確保逃逸的錯誤也能上報
 - **Rust 端清理** — App 退出前呼叫 `sentry::end_session()` + `client.flush(Duration::from_secs(2))`，確保最後的 event 發送完成
 - **Release 格式** — `sayit@<version>`，由 CI/CD 環境變數自動設定
@@ -149,7 +149,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **平台隔離** — `#[cfg(target_os = "macos")]` / `#[cfg(target_os = "windows")]` 隔離，不可在同一函式中混合
 - **unsafe 標記** — macOS `objc::msg_send!` 呼叫必須在 `unsafe {}` 區塊內
 - **原子操作** — 跨執行緒共享狀態使用 `AtomicBool` + `Ordering::SeqCst`
-- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`, `audio_control`, `audio_recorder`, `transcription`, `sound_feedback`, `text_field_reader`）。`hotkey_listener` 額外提供 `reset_hotkey_state` command（ESC 中斷後重置 toggle 狀態）
+- **Plugin 模式** — 每個功能模組是獨立的 `TauriPlugin<R>`，在 `plugins/mod.rs` 中 `pub mod` 匯出（目前：`clipboard_paste`, `hotkey_listener`, `keyboard_monitor`, `audio_control`, `audio_recorder`, `transcription`, `sound_feedback`, `text_field_reader`）。`hotkey_listener` 額外提供 `reset_hotkey_state` command（ESC 中斷後重置 toggle 狀態）。`sound_feedback` 提供 `play_start_sound`/`play_stop_sound`/`play_error_sound`/`play_learned_sound` commands，前端透過 `playSoundIfEnabled()` 依 `isSoundEffectsEnabled` 設定條件呼叫
 - **audio_recorder 錄音檔管理 Commands（Story 4.4）** — `save_recording_file`（寫入 WAV 至 `{APP_DATA}/recordings/`）、`delete_all_recordings`（清除所有錄音檔）、`cleanup_old_recordings`（按天數清理過期檔案，回傳被刪除的 transcription ID list）
 - **transcription 重送 Command（Story 4.5）** — `retranscribe_from_file`（從磁碟讀取 WAV 重新轉錄），內部共用 `send_transcription_request()` 函式（與 `transcribe_audio` 共用 Groq API 邏輯，避免重複實作）
 - **Plugin State shutdown 慣例** — 每個 Plugin State struct 必須實作 `pub fn shutdown(&self)` 方法，用於 App 退出時清理資源（停止錄音、恢復音量、取消 CGEventTap 等）。`shutdown()` 內部必須處理 `Mutex` poisoned 的情況（`match lock() { Err(_) => return }`）
@@ -245,7 +245,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 
 #### SettingsKey 跨視窗同步
 
-- **`SettingsKey` 型別** — 定義 `settings:updated` event 的 `key` 欄位（`events.ts`）：`hotkey` | `apiKey` | `aiPrompt` | `enhancementThreshold` | `llmModel` | `vocabularyAnalysisModel` | `whisperModel` | `muteOnRecording` | `smartDictionaryEnabled` | `locale` | `transcriptionLocale`
+- **`SettingsKey` 型別** — 定義 `settings:updated` event 的 `key` 欄位（`events.ts`）：`hotkey` | `apiKey` | `aiPrompt` | `enhancementThreshold` | `llmModel` | `vocabularyAnalysisModel` | `whisperModel` | `muteOnRecording` | `smartDictionaryEnabled` | `locale` | `transcriptionLocale` | `soundEffectsEnabled`
 - **智慧字典開關** — `isSmartDictionaryEnabled`（macOS 預設啟用，Windows 預設關閉——因 Windows 尚未支援 `read_focused_text_field` AX API）
 - **字典分析模型獨立** — `selectedVocabularyAnalysisModelId` 與 `selectedLlmModelId` 分開儲存和選擇，各自有獨立的模型清單和設定 UI
 
@@ -260,19 +260,26 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **語言偵測** — `detectSystemLocale()` 5 層匹配：精確 → script subtag（`zh-Hant` → `zh-TW`）→ 語言前綴 → 裸 `zh` → fallback `zh-TW`（保護既有中文使用者升級路徑）
 - **HTML lang 屬性** — `document.documentElement.lang` 隨 locale 更新（zh-TW → `zh-Hant`、zh-CN → `zh-Hans`）
 
-#### 幻覺偵測架構（v0.9.0 新增，Story 2.4）
+#### 幻覺偵測架構（v2 — 四層偵測 + RMS 能量 + NSP）
 
 - **偵測模組** — `src/lib/hallucinationDetector.ts`，純函式（無 Vue/Pinia 依賴），`detectHallucination()` 回傳 `HallucinationDetectionResult`
-- **三層判定邏輯**：
-  - **Layer 1（語速異常）** — 錄音 < 1000ms 且文字 ≥ 10 字 → 強判定幻覺 + 自動學習（`shouldAutoLearn: true`）
-  - **Layer 2+3（高 NSP + 詞庫命中）** — `noSpeechProbability > 0.9` 且 `text` 命中幻覺詞庫 → 強判定幻覺
-  - **雙弱可疑** — `noSpeechProbability > 0.7` 且錄音 < 2000ms 且文字 ≥ 15 字 → 組合判定幻覺
+- **輸入參數** — `HallucinationDetectionParams { rawText, recordingDurationMs, peakEnergyLevel, rmsEnergyLevel, noSpeechProbability, hallucinationTermList }`
+- **四層判定邏輯**（優先級由高到低）：
+  - **Layer 1（語速異常）** — `recordingDurationMs < 1000 && charCount > 10` → reason: `speed-anomaly`，`shouldAutoLearn: true`
+  - **Layer 2（靜音偵測）** — `peakEnergyLevel < 0.02`（SILENCE_ENERGY_THRESHOLD）→ reason: `silence-detected`，`shouldAutoLearn: true`
+  - **Layer 3（背景噪音偵測）** — 兩個子條件（OR 關係）：
+    - **3a**：`rmsEnergyLevel < 0.008`（NOISE_RMS_HARD_THRESHOLD）→ 極低 RMS，幾乎確定無人聲，不需要 NSP 確認
+    - **3b**：`rmsEnergyLevel < 0.015`（NOISE_RMS_SOFT_THRESHOLD）且 `noSpeechProbability > 0.7`（NOISE_NSP_THRESHOLD）→ 低 RMS + 高 NSP 聯合判斷
+    - → reason: `noise-detected`，`shouldAutoLearn: true`
+  - **Layer 4（精確比對）** — `trimmedText` 完全匹配 `hallucinationTermList` 中的任一詞 → reason: `term-match`，`shouldAutoLearn: false`（已在 DB 中）
   - **其他** — 放行，正常流程
-- **幻覺攔截行為** — 判定為幻覺 → 不貼上，HUD 顯示「未偵測到語音」，寫入 `transcriptions` 表 `status: 'failed'`，設定重送狀態（`canRetry`）
-- **自動學習** — Layer 1 觸發時自動加入 `hallucination_terms` 表（`source: 'auto'`），emit `hallucination:learned` 事件通知 HUD 顯示藍色通知
-- **內建幻覺詞庫** — `src/lib/builtinHallucinationTerms.ts`，4 語言（zh/en/ja/ko），App 啟動時 `INSERT OR IGNORE` 寫入 DB（冪等性）
-- **詞庫查詢** — `useHallucinationStore.getTermListForDetection(locale)` 合併 DB 自訂詞 + 純函式內建詞（去重），DB 查詢失敗時仍回傳內建詞（graceful degradation）
-- **整合位置** — `useVoiceFlowStore` 的 `handleStopRecording()` 和 `handleRetryTranscription()` 在轉錄結果回傳後、`isEmptyTranscription` 檢查之後執行幻覺偵測
+- **RMS 能量** — Rust `audio_recorder.rs` 的 `stop_recording()` 同時計算 `peak_energy_level`（峰值）和 `rms_energy_level`（均方根），單次遍歷。RMS 比 peak 更能區分「持續人聲」vs「偶發噪音尖峰」（背景噪音 peak 可高達 0.15，但 RMS 通常 < 0.01）
+- **NSP 使用策略** — `noSpeechProbability` 不單獨使用（已知不可靠，Whisper 對幻覺可能給出 NSP=0.0），僅作為 Layer 3b 的輔助信號搭配 RMS 使用
+- **幻覺詞庫** — 純自動學習（`source: 'auto'`）+ 手動新增（`source: 'manual'`），**無內建詞庫**（已移除 `builtinHallucinationTerms.ts`）。App 啟動時 `removeBuiltinTerms()` 清理舊版 builtin 記錄
+- **詞庫查詢** — `useHallucinationStore.getTermListForDetection(transcriptionLocale)` 從 DB 查詢對應語言的幻覺詞，DB 失敗時回傳空陣列
+- **自我增強飛輪** — Layer 1/2/3 攔截的幻覺詞自動學習進 DB → 下次即使 Layer 1/2/3 放過，Layer 4 精確比對也能攔截
+- **幻覺攔截行為** — 判定為幻覺 → 不貼上，HUD 顯示「未偵測到語音」，寫入 `transcriptions` 表 `status: 'failed'`，設定重送狀態（`canRetry`）。`shouldAutoLearn=true` 時自動加入 `hallucination_terms` 表 + emit `hallucination:learned` 事件
+- **整合位置** — `useVoiceFlowStore` 的 `handleStopRecording()` 和 `handleRetryTranscription()` 在轉錄結果回傳後、`isEmptyTranscription` 檢查之後執行幻覺偵測。偵測前先呼叫 `getTermListForDetection()` 取得詞庫
 - **`isEmptyTranscription()`** — 仍保留，只攔截完全空白文字（`!rawText.trim()`），與幻覺偵測互補
 
 #### 轉錄語言分離（TranscriptionLocale）
@@ -325,7 +332,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Schema Migration** — `schema_version` 表追蹤版本號，migration 在 `database.ts` 中依序執行（`if (currentVersion < N)` → 建表/改表 → 更新版本號），當前版本：v5
   - v3：vocabulary.weight/source 欄位 + api_usage CHECK constraint 擴展
   - v4（Story 4.4）：`ALTER TABLE transcriptions ADD COLUMN audio_file_path TEXT`、`ADD COLUMN status TEXT NOT NULL DEFAULT 'success'`、`CREATE INDEX idx_transcriptions_status`
-  - v5（Story 2.4）：`CREATE TABLE hallucination_terms`（`term TEXT UNIQUE`、`source TEXT CHECK(source IN ('builtin','auto','manual'))`、`locale TEXT`）
+  - v5（Story 2.4）：`CREATE TABLE hallucination_terms`（`term TEXT UNIQUE`、`source TEXT CHECK(source IN ('builtin','auto','manual'))`、`locale TEXT`）。注意：source `'builtin'` 已不再使用，App 啟動時 `removeBuiltinTerms()` 會清除舊 builtin 記錄，但 CHECK 約束保留向後相容
 - **TRANSACTION Migration 模式** — v4 起使用 `BEGIN TRANSACTION / COMMIT / ROLLBACK` 包裹每個 migration，確保 schema 變更原子性
 - **外鍵關聯** — `api_usage.transcription_id` → `transcriptions.id`，新增表時必須同步建立 index
 - **表命名** — 複數 snake_case（`transcriptions`, `vocabulary`, `api_usage`, `hallucination_terms`）
@@ -345,6 +352,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Rust Command** — `retranscribe_from_file`：從磁碟讀取 WAV，共用 `send_transcription_request()` 內部函式（與 `transcribe_audio` 共用 Groq API 邏輯）
 - **重送狀態** — `useVoiceFlowStore` 的 `lastFailedTranscriptionId`、`lastFailedAudioFilePath`、`lastFailedRecordingDurationMs`（失敗時設定，新錄音時重置）
 - **`canRetry` computed** — `status === 'error' && lastFailedAudioFilePath !== null && !isRetryAttempt`
+- **重試感知 HUD 時長** — error HUD 預設 3 秒自動消失（`ERROR_DISPLAY_DURATION_MS`），有重試按鈕時延長至 6 秒（`ERROR_WITH_RETRY_DISPLAY_DURATION_MS`），讓使用者有足夠時間點擊重試
 - **重送限制** — 限 1 次（`isRetryAttempt` flag），重送失敗不再提供重送按鈕
 - **`skipRecordSaving` 模式** — 重送成功時 `completePasteFlow({ skipRecordSaving: true })`，跳過 INSERT（避免 PK 衝突），改由 `updateTranscriptionOnRetrySuccess()` UPDATE 現有 failed 記錄
 - **API usage 串接** — 重送路徑的 `saveApiUsageRecordList` 必須在 `updateTranscriptionOnRetrySuccess` 完成後執行（FK 依賴）
@@ -395,10 +403,8 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `i18n-settings.test.ts` | 語言偵測、locale 儲存/載入、Whisper code 映射、prompt 連動、翻譯檔 key 一致性 |
 | `AccessibilityGuide.test.ts`（component） | 輔助使用權限引導 |
 | `use-vocabulary-store.test.ts` | 字典 CRUD + 權重 + AI 推薦詞 + getTopTermListByWeight |
-| `vocabulary-analyzer.test.ts` | AI 分析回傳解析（正常 JSON、空陣列、非 JSON） |
 | `i18n-smoke.test.ts`（component） | mount View + 切換 locale + 斷言 UI 文字切換 |
-| `hallucination-detector.test.ts` | 三層幻覺偵測邏輯 |
-| `builtin-hallucination-terms.test.ts` | 多語言內建詞庫 + locale 映射 |
+| `hallucination-detector.test.ts` | 四層幻覺偵測邏輯（含 RMS + NSP Layer 3 背景噪音測試） |
 | `smoke.test.ts`（e2e） | 端對端冒煙測試 |
 
 #### 測試規則
@@ -477,8 +483,7 @@ src/
 │   ├── modelRegistry.ts     # LLM/Whisper/字典分析 模型註冊、價格、Badge、下架遷移
 │   ├── keycodeMap.ts        # DOM event.code → 平台原生 keycode 映射
 │   ├── errorUtils.ts        # 錯誤訊息本地化（繁體中文）
-│   ├── hallucinationDetector.ts   # 三層幻覺偵測純函式
-│   ├── builtinHallucinationTerms.ts # 多語言內建幻覺詞庫
+│   ├── hallucinationDetector.ts   # 四層幻覺偵測純函式（RMS + NSP + 精確比對）
 │   ├── formatUtils.ts       # 時間/文字格式化工具
 │   ├── apiPricing.ts        # API 費用上限計算（Whisper + LLM）
 │   └── utils.ts             # cn() shadcn-vue 工具函式
@@ -486,13 +491,13 @@ src/
 │   ├── useSettingsStore.ts      # 快捷鍵 / API Key / AI Prompt / 開機啟動 / UI locale / 轉錄 locale / Whisper 語言 / 字典分析模型
 │   ├── useHistoryStore.ts       # 歷史記錄 CRUD + Dashboard 統計 + 分頁
 │   ├── useVocabularyStore.ts    # 詞彙字典 CRUD + 權重系統 + AI 推薦詞管理
-│   ├── useHallucinationStore.ts   # 幻覺詞庫 CRUD + 偵測查詢 + 內建詞初始化
+│   ├── useHallucinationStore.ts   # 幻覺詞庫 CRUD + 偵測查詢 + 舊版 builtin 清理
 │   └── useVoiceFlowStore.ts     # 錄音/轉錄/AI 整理/貼上/修正偵測/字典學習完整流程
 ├── views/                # Main Window 頁面
 │   ├── DashboardView.vue    # 統計卡片 + 最近轉錄列表
 │   ├── HistoryView.vue      # 歷史記錄搜尋與管理
 │   ├── DictionaryView.vue   # 詞彙字典 CRUD
-│   ├── HallucinationView.vue  # 幻覺詞庫管理（內建/自動/手動三類）
+│   ├── HallucinationView.vue  # 幻覺詞庫管理（自動學習/手動新增兩類）
 │   └── SettingsView.vue     # 快捷鍵 / API Key / AI Prompt 設定
 ├── types/                # TypeScript 型別定義
 │   ├── index.ts             # HudStatus（含 cancelled）, TriggerMode, HudTargetPosition 等共用型別
@@ -500,7 +505,7 @@ src/
 │   ├── vocabulary.ts        # VocabularyEntry（含 weight, source）
 │   ├── settings.ts          # TriggerKey (含右側修飾鍵: rightOption, rightControl), HotkeyConfig, SettingsDto
 │   ├── events.ts            # 所有 Tauri Event payload 型別
-│   └── audio.ts             # WaveformPayload, StopRecordingResult, TranscriptionResult
+│   └── audio.ts             # WaveformPayload, StopRecordingResult（含 rmsEnergyLevel）, TranscriptionResult
 ├── App.vue              # HUD Window 入口
 ├── MainApp.vue          # Main Window 入口
 ├── router.ts            # Vue Router hash mode 設定
@@ -632,7 +637,8 @@ src/
 - **❌ 使用 ESC（keycode 53 / VK 0x1B）作為 Custom trigger key** — ESC 已保留為全域中斷鍵，`keycodeMap.ts` 的 `getDangerousKeyWarning("Escape")` 回傳 null（不走 warning 路徑），由 `getEscapeReservedMessage()` 提供 hard block 錯誤訊息
 - **❌ 重送成功時 INSERT 新 transcription 記錄** — 重送路徑必須使用 `completePasteFlow({ skipRecordSaving: true })` + `updateTranscriptionOnRetrySuccess()` UPDATE 現有 failed 記錄，禁止 INSERT（PK 衝突 + FK 787 錯誤）
 - **❌ 重送的 API usage 不等 transcription UPDATE 完成** — `saveApiUsageRecordList` 必須串接在 `updateTranscriptionOnRetrySuccess().then()` 之後，確保 FK 依賴正確
-- **❌ HUD 視窗執行 `initializeBuiltinTerms()`** — 內建幻覺詞初始化只由 Dashboard（`main-window.ts`）執行，HUD 不寫 DB（避免雙視窗競態），`getTermListForDetection()` 用純函式 fallback
+- **❌ 在幻覺偵測中單獨依賴 NSP** — `noSpeechProbability` 不可靠（Whisper 對幻覺可能回傳 NSP=0.0），只能搭配 RMS 能量作為輔助信號（Layer 3b），不可單獨用於判斷
+- **❌ 使用 peakEnergyLevel 判斷「有沒有人說話」** — peak 只反映瞬時最大振幅，背景噪音也能達到 0.15+。判斷持續語音活動應使用 `rmsEnergyLevel`（RMS 均方根能量）
 
 #### 資料映射陷阱
 
@@ -695,4 +701,4 @@ src/
 - Review periodically for outdated rules
 - Remove rules that become obvious over time
 
-Last Updated: 2026-03-15 (v9 — Stories 1.5/4.4/4.5/2.4：三層幻覺偵測架構、錄音檔管理、轉錄重送機制、幻覺詞庫管理頁面)
+Last Updated: 2026-03-16 (v11 — 更新 captureError 計數 61、SettingsKey 加 soundEffectsEnabled、重試感知 HUD 時長、移除已刪測試檔)
