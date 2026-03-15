@@ -174,15 +174,15 @@ onBeforeUnmount(() => {
 
     <!-- Term sections -->
     <div v-else class="mt-6 space-y-6">
-      <!-- Built-in Section -->
-      <Card v-if="builtinTermList.length > 0">
+      <!-- Manual Section -->
+      <Card v-if="manualTermList.length > 0">
         <CardHeader class="pb-3">
           <div class="flex items-center gap-2">
             <CardTitle class="text-base">
-              <ShieldAlert class="mr-1 inline h-4 w-4" />
-              {{ $t("hallucination.sourceBuiltin") }}
+              <Hand class="mr-1 inline h-4 w-4" />
+              {{ $t("hallucination.sourceManual") }}
             </CardTitle>
-            <Badge variant="secondary">{{ builtinTermList.length }}</Badge>
+            <Badge variant="secondary">{{ manualTermList.length }}</Badge>
           </div>
         </CardHeader>
         <CardContent>
@@ -196,12 +196,20 @@ onBeforeUnmount(() => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow v-for="entry in builtinTermList" :key="entry.id">
+              <TableRow v-for="entry in manualTermList" :key="entry.id">
                 <TableCell class="font-medium text-foreground">{{ entry.term }}</TableCell>
                 <TableCell class="text-center text-muted-foreground">{{ entry.locale }}</TableCell>
                 <TableCell class="text-muted-foreground">{{ formatDate(entry.createdAt) }}</TableCell>
                 <TableCell class="text-right">
-                  <span class="text-xs text-muted-foreground">-</span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    class="text-destructive"
+                    :disabled="removingTermIdSet.has(entry.id)"
+                    @click="handleRemoveTerm(entry.id)"
+                  >
+                    <Trash2 class="h-4 w-4" />
+                  </Button>
                 </TableCell>
               </TableRow>
             </TableBody>
@@ -252,15 +260,15 @@ onBeforeUnmount(() => {
         </CardContent>
       </Card>
 
-      <!-- Manual Section -->
-      <Card v-if="manualTermList.length > 0">
+      <!-- Built-in Section -->
+      <Card v-if="builtinTermList.length > 0">
         <CardHeader class="pb-3">
           <div class="flex items-center gap-2">
             <CardTitle class="text-base">
-              <Hand class="mr-1 inline h-4 w-4" />
-              {{ $t("hallucination.sourceManual") }}
+              <ShieldAlert class="mr-1 inline h-4 w-4" />
+              {{ $t("hallucination.sourceBuiltin") }}
             </CardTitle>
-            <Badge variant="secondary">{{ manualTermList.length }}</Badge>
+            <Badge variant="secondary">{{ builtinTermList.length }}</Badge>
           </div>
         </CardHeader>
         <CardContent>
@@ -274,20 +282,12 @@ onBeforeUnmount(() => {
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow v-for="entry in manualTermList" :key="entry.id">
+              <TableRow v-for="entry in builtinTermList" :key="entry.id">
                 <TableCell class="font-medium text-foreground">{{ entry.term }}</TableCell>
                 <TableCell class="text-center text-muted-foreground">{{ entry.locale }}</TableCell>
                 <TableCell class="text-muted-foreground">{{ formatDate(entry.createdAt) }}</TableCell>
                 <TableCell class="text-right">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    class="text-destructive"
-                    :disabled="removingTermIdSet.has(entry.id)"
-                    @click="handleRemoveTerm(entry.id)"
-                  >
-                    <Trash2 class="h-4 w-4" />
-                  </Button>
+                  <span class="text-xs text-muted-foreground">-</span>
                 </TableCell>
               </TableRow>
             </TableBody>
