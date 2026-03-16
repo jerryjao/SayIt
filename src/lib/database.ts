@@ -53,9 +53,12 @@ async function addColumnIfNotExists(
   }
 }
 
+/**
+ * Dashboard 專用：建立連線池 + 執行 migration。
+ * 只有 main-window.ts（Dashboard）應呼叫此函式。
+ */
 export async function initializeDatabase(): Promise<Database> {
   if (db) return db;
-  // Promise lock：第二個呼叫者等待第一個完成，避免兩視窗同時跑 migration
   if (initPromise) return initPromise;
 
   initPromise = doInitializeDatabase();
@@ -67,21 +70,41 @@ export async function initializeDatabase(): Promise<Database> {
   }
 }
 
+/**
+ * HUD 專用：等待 Dashboard 建好連線池後複用，永不呼叫 Database.load()。
+ * Database.load() 會在 Rust 端以 HashMap.insert() 覆蓋既有 Pool，
+ * 若 Dashboard 正在用舊 Pool 跑 migration，transaction context 會遺失，
+ * 導致 DROP TABLE 等破壞性操作失去 rollback 保護。
+ */
+export async function connectToDatabase(
+  maxRetries = 100,
+  retryDelayMs = 100,
+): Promise<Database> {
+  if (db) return db;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const existing = Database.get("sqlite:app.db");
+      await existing.execute("PRAGMA busy_timeout = 5000;");
+      await existing.select<{ n: number }[]>("SELECT 1 AS n");
+      db = existing;
+      console.log("[database] HUD connected to existing database pool");
+      return db;
+    } catch {
+      if (i < maxRetries - 1) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+      }
+    }
+  }
+
+  // Fallback：Dashboard 尚未載入（極罕見），HUD 自行初始化
+  console.warn("[database] HUD fallback: initializing database directly");
+  return doInitializeDatabase();
+}
+
 async function doInitializeDatabase(): Promise<Database> {
   // 使用 local variable，確保只有 schema 全部建立成功才設定 singleton
-  let connection: Database;
-
-  // 防止連線池覆蓋：Database.load() 會在 Rust 端建新 Pool 並覆蓋舊的，
-  // 如果另一個視窗正在用舊 Pool 跑 migration，transaction context 會遺失。
-  // 先嘗試 Database.get()（不建新 Pool，複用已存在的），失敗才 load。
-  try {
-    const existing = Database.get("sqlite:app.db");
-    await existing.select<{ n: number }[]>("SELECT 1 AS n");
-    connection = existing;
-    console.log("[database] Reusing existing database pool from another window");
-  } catch {
-    connection = await Database.load("sqlite:app.db");
-  }
+  const connection = await Database.load("sqlite:app.db");
 
   await connection.execute("PRAGMA journal_mode = WAL;");
   await connection.execute("PRAGMA synchronous = NORMAL;");

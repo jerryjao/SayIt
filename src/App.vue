@@ -6,7 +6,7 @@ import { getCurrentWindow, Window } from "@tauri-apps/api/window";
 import { useVoiceFlowStore } from "./stores/useVoiceFlowStore";
 import { useSettingsStore } from "./stores/useSettingsStore";
 import { useVocabularyStore } from "./stores/useVocabularyStore";
-import { initializeDatabase } from "./lib/database";
+import { connectToDatabase } from "./lib/database";
 import { listenToEvent, SETTINGS_UPDATED, VOCABULARY_CHANGED } from "./composables/useTauriEvents";
 
 const voiceFlowStore = useVoiceFlowStore();
@@ -21,7 +21,7 @@ onMounted(async () => {
   // 初始化 DB（供 vocabularyStore 使用）
   let isDatabaseReady = false;
   try {
-    await initializeDatabase();
+    await connectToDatabase();
     isDatabaseReady = true;
   } catch (err) {
     console.error("[App] Database init failed:", err);
