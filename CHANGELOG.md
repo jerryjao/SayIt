@@ -2,6 +2,14 @@
 
 SayIt 版本更新紀錄。
 
+## [0.8.2](https://github.com/chenjackle45/SayIt/releases/tag/v0.8.2) - 2026-03-16
+
+### Fixed
+
+- 修正舊版升級（v0.6.0 以前、v0.7.x）資料庫初始化失敗：ALTER TABLE ADD COLUMN 在 transaction 內對後續語句不可見，導致 "no such column: weight" 或 "no such column: status" 錯誤
+- 修正儀表板「平均每次字數」偏高：改用原始辨識字數計算，不再受 AI 整理後文字膨脹影響
+- 修正儀表板「節省時間」高估：公式改為（打字時間 − 口述時間），而非僅計算打字時間
+
 ## [0.8.1](https://github.com/chenjackle45/SayIt/releases/tag/v0.8.1) - 2026-03-16
 
 ### Fixed
