@@ -12,6 +12,17 @@ export function setDatabaseInitError(error: string): void {
   databaseInitError = error;
 }
 
+async function tableExists(
+  connection: Database,
+  tableName: string,
+): Promise<boolean> {
+  const rows = await connection.select<{ name: string }[]>(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name=$1",
+    [tableName],
+  );
+  return rows.length > 0;
+}
+
 async function hasColumn(
   connection: Database,
   tableName: string,
@@ -58,7 +69,19 @@ export async function initializeDatabase(): Promise<Database> {
 
 async function doInitializeDatabase(): Promise<Database> {
   // 使用 local variable，確保只有 schema 全部建立成功才設定 singleton
-  const connection = await Database.load("sqlite:app.db");
+  let connection: Database;
+
+  // 防止連線池覆蓋：Database.load() 會在 Rust 端建新 Pool 並覆蓋舊的，
+  // 如果另一個視窗正在用舊 Pool 跑 migration，transaction context 會遺失。
+  // 先嘗試 Database.get()（不建新 Pool，複用已存在的），失敗才 load。
+  try {
+    const existing = Database.get("sqlite:app.db");
+    await existing.select<{ n: number }[]>("SELECT 1 AS n");
+    connection = existing;
+    console.log("[database] Reusing existing database pool from another window");
+  } catch {
+    connection = await Database.load("sqlite:app.db");
+  }
 
   await connection.execute("PRAGMA journal_mode = WAL;");
   await connection.execute("PRAGMA synchronous = NORMAL;");
@@ -195,10 +218,14 @@ async function doInitializeDatabase(): Promise<Database> {
           FOREIGN KEY (transcription_id) REFERENCES transcriptions(id)
         );
       `);
-      await connection.execute(
-        "INSERT INTO api_usage_new SELECT * FROM api_usage;",
-      );
-      await connection.execute("DROP TABLE api_usage;");
+      // api_usage 可能在先前失敗的 migration 中被 DROP 而未 RENAME 回來
+      const hasApiUsage = await tableExists(connection, "api_usage");
+      if (hasApiUsage) {
+        await connection.execute(
+          "INSERT INTO api_usage_new SELECT * FROM api_usage;",
+        );
+        await connection.execute("DROP TABLE api_usage;");
+      }
       await connection.execute(
         "ALTER TABLE api_usage_new RENAME TO api_usage;",
       );
@@ -318,6 +345,47 @@ async function doInitializeDatabase(): Promise<Database> {
     console.log(
       "[database] Migration v5 → v6: recalculate char_count from raw_text",
     );
+  }
+
+  // --- 關鍵表驗證與恢復 ---
+  // 先前版本的 migration 可能因連線池覆蓋導致 DROP TABLE 後未 RENAME，
+  // 若 api_usage 不存在則以最新 schema 重建（資料已遺失，但 app 可正常運作）
+  if (!(await tableExists(connection, "api_usage"))) {
+    // 可能有殘留的 api_usage_new（上次 migration 建了但沒 RENAME 成功）
+    if (await tableExists(connection, "api_usage_new")) {
+      await connection.execute(
+        "ALTER TABLE api_usage_new RENAME TO api_usage;",
+      );
+      console.log(
+        "[database] Recovery: renamed api_usage_new → api_usage",
+      );
+    } else {
+      await connection.execute(`
+        CREATE TABLE api_usage (
+          id TEXT PRIMARY KEY,
+          transcription_id TEXT NOT NULL,
+          api_type TEXT NOT NULL CHECK(api_type IN ('whisper', 'chat', 'vocabulary_analysis')),
+          model TEXT NOT NULL,
+          prompt_tokens INTEGER,
+          completion_tokens INTEGER,
+          total_tokens INTEGER,
+          prompt_time_ms REAL,
+          completion_time_ms REAL,
+          total_time_ms REAL,
+          audio_duration_ms INTEGER,
+          estimated_cost_ceiling REAL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          FOREIGN KEY (transcription_id) REFERENCES transcriptions(id)
+        );
+      `);
+      await connection.execute(`
+        CREATE INDEX IF NOT EXISTS idx_api_usage_transcription_id
+        ON api_usage(transcription_id);
+      `);
+      console.log(
+        "[database] Recovery: recreated missing api_usage table",
+      );
+    }
   }
 
   // 只有全部 schema 建立成功才設定 singleton
