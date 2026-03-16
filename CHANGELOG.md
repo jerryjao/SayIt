@@ -2,6 +2,14 @@
 
 SayIt 版本更新紀錄。
 
+## [0.8.4](https://github.com/chenjackle45/SayIt/releases/tag/v0.8.4) - 2026-03-16
+
+### Fixed
+
+- 修正版本升級後「no such table: api_usage」錯誤：HUD 視窗的 Database.load() 覆蓋 Dashboard 的連線池，導致 migration 中的 DROP TABLE 失去 transaction 保護
+- 防止連線池覆蓋：第二個視窗改用 Database.get() 複用既有連線池
+- 自動恢復遺失的 api_usage 表：migration 結束後驗證關鍵表是否存在，不存在則重建
+
 ## [0.8.3](https://github.com/chenjackle45/SayIt/releases/tag/v0.8.3) - 2026-03-16
 
 ### Fixed
