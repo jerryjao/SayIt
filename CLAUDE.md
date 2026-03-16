@@ -1,7 +1,7 @@
 # SayIt — Claude Code 專案記憶檔
 
 > Tauri v2 + Vue 3 + Rust 語音轉文字桌面應用
-> 完整規則請讀：`_bmad-output/project-context.md`（99 條）
+> 完整規則請讀：`_bmad-output/project-context.md`（261 條）
 
 ## Quick Reference
 
@@ -59,8 +59,12 @@
 | `restore_system_audio` | `plugins/audio_control.rs` | useVoiceFlowStore | `state: State<AudioControlState>` | `Result<(), String>` |
 | `start_recording` | `plugins/audio_recorder.rs` | useVoiceFlowStore | `app: AppHandle, state: State<AudioRecorderState>` | `Result<(), AudioRecorderError>` |
 | `stop_recording` | `plugins/audio_recorder.rs` | useVoiceFlowStore | `state: State<AudioRecorderState>` | `Result<StopRecordingResult, AudioRecorderError>` |
+| `save_recording_file` | `plugins/audio_recorder.rs` | useVoiceFlowStore | `id: String, app: AppHandle, state: State<AudioRecorderState>` | `Result<String, String>` |
 | `read_recording_file` | `plugins/audio_recorder.rs` | HistoryView | `id: String, app: AppHandle` | `Result<Response, String>` |
+| `delete_all_recordings` | `plugins/audio_recorder.rs` | SettingsView | `app: AppHandle` | `Result<u32, String>` |
+| `cleanup_old_recordings` | `plugins/audio_recorder.rs` | main-window.ts | `days: u32, app: AppHandle` | `Result<Vec<String>, String>` |
 | `transcribe_audio` | `plugins/transcription.rs` | useVoiceFlowStore | `state: State<AudioRecorderState>, transcription_state: State<TranscriptionState>, api_key: String, vocabulary_term_list: Option<Vec<String>>, model_id: Option<String>, language: Option<String>` | `Result<TranscriptionResult, TranscriptionError>` |
+| `retranscribe_from_file` | `plugins/transcription.rs` | useVoiceFlowStore | `path: String, api_key: String, vocabulary_term_list: Option<Vec<String>>, model_id: Option<String>, language: Option<String>` | `Result<TranscriptionResult, TranscriptionError>` |
 | `play_start_sound` | `plugins/sound_feedback.rs` | useVoiceFlowStore | — | `()` |
 | `play_stop_sound` | `plugins/sound_feedback.rs` | useVoiceFlowStore | — | `()` |
 | `play_error_sound` | `plugins/sound_feedback.rs` | useVoiceFlowStore | — | `()` |
@@ -246,6 +250,12 @@
 | macOS ARM | `https://github.com/chenjackle45/SayIt/releases/latest/download/SayIt-mac-arm64.dmg` |
 | macOS Intel | `https://github.com/chenjackle45/SayIt/releases/latest/download/SayIt-mac-x64.dmg` |
 | Windows | `https://github.com/chenjackle45/SayIt/releases/latest/download/SayIt-windows-x64.exe` |
+
+## Tauri v2 macOS 注意事項
+
+- **IPC binary response**：`tauri::ipc::Response` raw bytes 在 macOS 走 JSON 序列化（`number[]`），非 `ArrayBuffer`。前端必須用 `new Uint8Array(raw)` 轉換
+- **CSP 與 asset protocol**：`convertFileSrc` 在 macOS 產生 `asset://localhost/` URL，但 CSP `media-src` 需要 `http://asset.localhost`。Dev mode 不受 CSP 影響，production build 會被阻擋。偏好使用 Rust IPC + Blob URL 繞過
+- **Dev vs Production 差異**：`pnpm tauri dev` 從 Vite dev server 載入，CSP 行為不同。安全性相關功能必須用 `pnpm tauri build --debug` 測試
 
 ## Subagent
 
