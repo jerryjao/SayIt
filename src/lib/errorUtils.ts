@@ -10,20 +10,33 @@ export function extractErrorMessage(err: unknown): string {
 }
 
 export function getMicrophoneErrorMessage(error: unknown): string {
-  if (!(error instanceof DOMException)) {
-    return t("errors.mic.default");
+  // Rust AudioRecorderError 字串匹配（透過 Tauri invoke 傳來的字串錯誤）
+  const message = extractErrorMessage(error);
+  if (message.includes("No input device")) {
+    return t("errors.mic.notFound");
+  }
+  if (message.includes("Failed to build audio stream")) {
+    return t("errors.mic.busy");
+  }
+  if (message.includes("Failed to get input config")) {
+    return t("errors.mic.configFailed");
   }
 
-  switch (error.name) {
-    case "NotAllowedError":
-      return t("errors.mic.permission");
-    case "NotFoundError":
-      return t("errors.mic.notFound");
-    case "NotReadableError":
-      return t("errors.mic.busy");
-    default:
-      return t("errors.mic.default");
+  // 瀏覽器 DOMException（備用）
+  if (error instanceof DOMException) {
+    switch (error.name) {
+      case "NotAllowedError":
+        return t("errors.mic.permission");
+      case "NotFoundError":
+        return t("errors.mic.notFound");
+      case "NotReadableError":
+        return t("errors.mic.busy");
+      default:
+        return t("errors.mic.default");
+    }
   }
+
+  return t("errors.mic.default");
 }
 
 const NETWORK_ERROR_PATTERN =
