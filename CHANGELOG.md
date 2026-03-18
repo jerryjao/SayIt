@@ -2,6 +2,23 @@
 
 SayIt 版本更新紀錄。
 
+## [0.8.8] - 2026-03-18
+
+### Added
+
+- 麥克風選擇功能：設定中可指定錄音使用的輸入裝置（Rust `list_audio_input_devices` + `start_recording` 接受 `device_name`）
+- Enhancement anomaly 偵測：LLM 輸出異常時自動重試（最多 3 次），仍異常則 fallback 到原始文字
+
+### Improved
+
+- Layer 2b peak energy escape hatch：peak >= 0.03 時跳過 RMS+NSP 檢查，減少小聲說話「未偵測到語音」誤報
+- Enhancer temperature 從 0.3 降至 0.1，輸出更穩定
+- Active prompt 規則：合併重複表達時保留語氣（問句仍是問句），新增禁止將問句改寫為肯定句
+
+### Fixed
+
+- `getMicrophoneErrorMessage` 支援 Rust AudioRecorderError 字串匹配（No input device / Failed to build audio stream / Failed to get input config）
+
 ## [0.8.7](https://github.com/chenjackle45/SayIt/releases/tag/v0.8.7) - 2026-03-17
 
 ### Changed

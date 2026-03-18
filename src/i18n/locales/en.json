@@ -330,16 +330,11 @@
     },
     "upgradeNotice": {
       "title": "SayIt Update Summary",
-      "item1": "1. AI enhancement now offers three modes: Minimal, Active, Custom",
-      "item2": "2. Default AI enhancement model switched to Kimi K2 for better quality",
-      "item3": "3. Recordings auto-saved, history supports playback and re-transcription",
-      "item4": "4. Press ESC to cancel recording, transcription, or AI enhancement anytime",
-      "item5": "5. New sound feedback (toggle in settings)",
-      "item6": "6. Fixed AI enhancement answering questions in transcripts instead of formatting text",
-      "item7": "7. Simplified hallucination detection: removed term dictionary, now uses pure energy-based checks to avoid false positives",
-      "item8": "8. Fixed soft speech incorrectly detected as no speech",
-      "item9": "9. Fixed history recording playback silent in production builds",
-      "item10": "10. Fixed database upgrade errors (database is locked, no such table)",
+      "item1": "1. Microphone selection: choose your input device in settings",
+      "item2": "2. Improved soft speech detection: peak energy escape hatch reduces false positives",
+      "item3": "3. More stable AI enhancement: lower randomness, auto-retry on anomalous results",
+      "item4": "4. AI enhancement preserves tone: questions are no longer rewritten as statements",
+      "item5": "5. Better microphone errors: precise messages for device not found, busy, etc.",
       "dismiss": "Got it"
     }
   }
