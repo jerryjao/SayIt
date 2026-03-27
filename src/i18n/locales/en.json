@@ -31,6 +31,9 @@
       "modeUpdated": "Trigger mode updated",
       "keySet": "Trigger key set to {key}",
       "customKeyDisplay": "Custom Key ({keycode})",
+      "doubleTapHint": "In Hold mode, double-tap the trigger key to switch voice mode",
+      "longPressHint": "In Toggle mode, hold the trigger key for over 1 second to switch voice mode",
+      "comboKey": "Combo Key",
       "keys": {
         "fn": "Fn",
         "leftOption": "Left Option",
@@ -247,7 +250,9 @@
     "vocabularyLearned": "{terms}",
     "vocabularyLearnedTruncated": "{terms} +{count} more",
     "retryFailed": "Recognition failed, please record again",
-    "cancelled": "Cancelled"
+    "cancelled": "Cancelled",
+    "modeSwitched": "Switched to {mode} mode",
+    "commandMode": "Command"
   },
   "errors": {
     "databaseInitFailed": "Database initialization failed. History is temporarily unavailable. Please restart the app.",
@@ -333,11 +338,13 @@
     },
     "upgradeNotice": {
       "title": "SayIt Update Summary",
-      "item1": "1. Security fix: microphone stays active after stopping recording on macOS when a specific device is selected — now fixed",
-      "item2": "2. Microphone selection: choose your input device in settings",
-      "item3": "3. Improved soft speech detection: peak energy escape hatch reduces false positives",
-      "item4": "4. More stable AI enhancement: lower randomness, auto-retry on anomalous results",
-      "item5": "5. AI enhancement preserves tone: questions are no longer rewritten as statements",
+      "item1": "Combo hotkeys: use ⌘+J or similar combos as your trigger — no more accidental activations",
+      "item2": "Quick mode switch: double-tap or long-press your trigger key to switch between Minimal and Active without opening settings",
+      "item3": "Mode switch confirmation: a visual indicator appears on screen when you switch modes",
+      "item4": "Mode badge while recording: the on-screen notch shows which voice mode you're using",
+      "item5": "Better mic selector: shows default device name with a volume preview bar",
+      "item6": "Toggle mode paste fix: resolved an issue where text was pasted twice in certain scenarios",
+      "item7": "Usage note: SayIt is designed for quick voice-to-text dictation. Long meeting recordings are not yet supported, but we're working on it for future updates",
       "dismiss": "Got it"
     }
   }

@@ -2,9 +2,9 @@
 project_name: 'sayit'
 user_name: 'Jackle'
 date: '2026-03-27'
-sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n', 'smart_dictionary', 'model_registry_v2', 'esc_global_abort', 'hallucination_v3', 'sound_feedback', 'enhancement_anomaly', 'audio_input_device', 'audio_preview']
+sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n', 'smart_dictionary', 'model_registry_v2', 'esc_global_abort', 'hallucination_v3', 'sound_feedback', 'enhancement_anomaly', 'audio_input_device', 'audio_preview', 'combo_hotkey', 'rust_driven_recording']
 status: 'complete'
-rule_count: 285
+rule_count: 303
 optimized_for_llm: true
 ---
 
@@ -230,6 +230,28 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **ESC 為保留鍵** — `keycodeMap.ts` 中 ESC 為 hard block（`getDangerousKeyWarning("Escape")` 回傳 null，`getEscapeReservedMessage()` 提供錯誤訊息），設定頁面拒絕設定 ESC 為 trigger key
 - **已知限制** — Rust 端 `transcribe_audio` HTTP 請求無法真正取消，僅前端忽略結果（API 費用照算）
 
+#### 組合鍵 + 模式切換（hotkey_listener）
+
+- **TriggerKey 三種 variant** — `PresetTriggerKey`（字串如 `"fn"`）、`Custom { keycode }`、`Combo { modifiers: Vec<ModifierFlag>, keycode }`。Serde externally tagged（Rust 預設），JSON：`{ "combo": { "modifiers": ["command"], "keycode": 38 } }`
+- **ModifierFlag enum** — `Command | Control | Option | Shift | Fn`（5 variants），`#[serde(rename_all = "camelCase")]`。macOS `Fn` 透過 `CGEventFlagSecondaryFn` 偵測；Windows 無 Fn（firmware 層）
+- **HotkeySharedState 合併 Mutex** — `trigger_key + trigger_mode + active_modifiers + double_tap + recording + toggle_long_press_fired` 合併在單一 `Arc<Mutex<>>`，CGEventTap callback 只 lock 一次
+- **組合鍵 exact modifier match** — `matches_combo_trigger` 檢查 `modifiers.len() == active_mods.len()` + 所有 required modifier 存在。⌘+J 不會被 ⌘+⇧+J 觸發。空 modifiers 直接 reject。ESC keycode 作為 combo 主鍵直接 reject
+- **Hold 模式 Double-tap** — 快速按兩下觸發鍵（hold < 300ms, gap < 350ms）切換 promptMode（minimal ↔ active）。前端用 `waitForDoubleTapResolution()` Promise await mode-toggle event 或 400ms 超時
+- **Toggle 模式 Long-press** — Toggle 改為 release-based。按下時 spawn thread sleep 1s，若 `is_pressed` 仍 true → emit `hotkey:mode-toggle`（HUD 立即出現）。放開時 `toggle_long_press_fired` = true 跳過 toggle。短按 < 1s → 正常 toggle
+- **Mode-switch HUD 生命週期** — store 設 `modeSwitchLabel` + `showHud()`，3s 後清 label + `transitionTo("idle")`，與 success 流程一致（collapse 動畫 400ms → hideHud）。NotchHud 的 `modeSwitchLabel` watcher 只設 `visualMode = "mode-switch"`，不自行計時
+- **ESC 同時清除 DoubleTapState** — `handleEscapeAbort` 也 resolve pending `doubleTapResolve(false)` + 清除 `modeSwitchLabel`
+
+#### Rust-Driven 錄鍵（Recording Mode）
+
+- **Recording State** — `HotkeySharedState.recording: RecordingState { is_active, accumulated_modifiers, last_modifier_keycode }`
+- **Commands** — `start_hotkey_recording`（設 `recording.is_active = true`）、`cancel_hotkey_recording`（reset recording state）
+- **CGEventTap recording mode** — callback 開頭檢查 `recording.is_active`，true 時委派 `handle_recording_event_macos()`，跳過所有 trigger 邏輯
+- **FlagsChanged 處理** — 標準修飾鍵（Cmd/Ctrl/Opt/Shift）flag-based 累積；Fn 鍵 toggle-based（keycode 63 第一次 = press 累積，第二次 = release 捕獲）；所有修飾鍵放開且無主鍵 → emit `recording-captured { keycode: last_modifier_keycode, modifiers: [] }` 單鍵
+- **KeyDown 處理** — ESC → emit `recording-rejected { reason: "esc_reserved" }`；非修飾鍵 → emit `recording-captured { keycode, modifiers: accumulated }` combo 或單鍵
+- **Windows hook** — `handle_recording_event_windows` 同理，`is_modifier_vk()` 判斷修飾鍵，`get_active_modifiers_windows()` 追蹤狀態
+- **前端接收** — SettingsView 的 `startRecording()` 呼叫 `invoke("start_hotkey_recording")` + `listenToEvent(HOTKEY_RECORDING_CAPTURED/REJECTED)`。10s 超時呼叫 `cancel_hotkey_recording`。不再使用 DOM `keydown` 事件
+- **Display name** — `getKeyDisplayNameByKeycode()` 反向查表 keycode → domCode → 顯示名稱。Fn keycode 63 特別對應 `"Fn"`。`getDomCodeByKeycode()` 提供 keycode → domCode 反向查找
+
 #### Tauri Events 完整清單
 
 | Event Name | 常量名 | Direction | Payload |
@@ -247,6 +269,10 @@ _This file contains critical rules and patterns that AI agents must follow when 
 | `audio:waveform` | `AUDIO_WAVEFORM` | Rust → HUD | `WaveformPayload { levels: [f32; 6] }` |
 | `vocabulary:learned` | `VOCABULARY_LEARNED` | VoiceFlowStore → HUD | `VocabularyLearnedPayload` |
 | `escape:pressed` | `ESCAPE_PRESSED` | Rust → HUD | — |
+| `hotkey:mode-toggle` | `HOTKEY_MODE_TOGGLE` | Rust → HUD | `()` |
+| `hotkey:recording-captured` | `HOTKEY_RECORDING_CAPTURED` | Rust → Dashboard | `RecordingCapturedPayload` |
+| `hotkey:recording-rejected` | `HOTKEY_RECORDING_REJECTED` | Rust → Dashboard | `RecordingRejectedPayload` |
+| `audio:preview-level` | `AUDIO_PREVIEW_LEVEL` | Rust → Dashboard | `AudioPreviewLevelPayload` |
 
 #### SettingsKey 跨視窗同步
 
@@ -537,7 +563,7 @@ src/
 │   ├── index.ts             # HudStatus（含 cancelled）, TriggerMode, HudTargetPosition 等共用型別
 │   ├── transcription.ts     # TranscriptionRecord, DashboardStats, ApiUsageRecord, DailyUsageTrend
 │   ├── vocabulary.ts        # VocabularyEntry（含 weight, source）
-│   ├── settings.ts          # TriggerKey (含右側修飾鍵: rightOption, rightControl), HotkeyConfig, SettingsDto
+│   ├── settings.ts          # TriggerKey (Preset | Custom | Combo), ModifierFlag, HotkeyConfig, PromptMode
 │   ├── events.ts            # 所有 Tauri Event payload 型別
 │   └── audio.ts             # WaveformPayload, StopRecordingResult（含 rmsEnergyLevel）, TranscriptionResult
 ├── App.vue              # HUD Window 入口

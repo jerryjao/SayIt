@@ -84,6 +84,7 @@ const showAutoInstallDialog = ref(false);
 // 升級提示（watch 而非 onMounted，因為 loadSettings 在 mount 之後才執行）
 const settingsStore = useSettingsStore();
 const showUpgradeNoticeDialog = ref(false);
+const upgradeNoticeItemCount = 7;
 watch(() => settingsStore.showPromptUpgradeNotice, (shouldShow) => {
   if (shouldShow) {
     showUpgradeNoticeDialog.value = true;
@@ -370,11 +371,9 @@ onUnmounted(() => {
         <AlertDialogTitle>{{ $t("mainApp.upgradeNotice.title") }}</AlertDialogTitle>
         <AlertDialogDescription as="div">
           <ul class="mt-2 space-y-1.5 text-sm text-muted-foreground">
-            <li>{{ $t("mainApp.upgradeNotice.item1") }}</li>
-            <li>{{ $t("mainApp.upgradeNotice.item2") }}</li>
-            <li>{{ $t("mainApp.upgradeNotice.item3") }}</li>
-            <li>{{ $t("mainApp.upgradeNotice.item4") }}</li>
-            <li>{{ $t("mainApp.upgradeNotice.item5") }}</li>
+            <li v-for="i in upgradeNoticeItemCount" :key="i">
+              {{ $t(`mainApp.upgradeNotice.item${i}`) }}
+            </li>
           </ul>
         </AlertDialogDescription>
       </AlertDialogHeader>

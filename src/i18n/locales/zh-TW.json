@@ -31,6 +31,9 @@
       "modeUpdated": "觸發模式已更新",
       "keySet": "觸發鍵已設為 {key}",
       "customKeyDisplay": "自訂鍵 ({keycode})",
+      "doubleTapHint": "長按模式下，快速按兩下觸發鍵可切換語音模式",
+      "longPressHint": "切換模式下，長按觸發鍵超過一秒可切換語音模式",
+      "comboKey": "組合鍵",
       "keys": {
         "fn": "Fn",
         "leftOption": "左 Option (⌥)",
@@ -247,7 +250,9 @@
     "vocabularyLearned": "{terms}",
     "vocabularyLearnedTruncated": "{terms} 等 {count} 個",
     "retryFailed": "辨識失敗，請重新錄音",
-    "cancelled": "已取消"
+    "cancelled": "已取消",
+    "modeSwitched": "已切換至{mode}模式",
+    "commandMode": "指令"
   },
   "errors": {
     "databaseInitFailed": "資料庫初始化失敗，歷史記錄暫時無法使用。請重新啟動應用程式。",
@@ -333,11 +338,13 @@
     },
     "upgradeNotice": {
       "title": "SayIt 更新摘要",
-      "item1": "1. 安全修正：macOS 上選擇麥克風後停止錄音，麥克風不會關閉的問題已修復",
-      "item2": "2. 新增麥克風選擇：可在設定中指定錄音使用的輸入裝置",
-      "item3": "3. 改善小聲說話誤判：新增 peak energy 逃生機制，減少誤報",
-      "item4": "4. AI 整理更穩定：降低隨機性，異常結果自動重試",
-      "item5": "5. AI 整理保留語氣：問句不再被改寫成肯定句",
+      "item1": "組合鍵觸發：用 ⌘+J 這樣的組合鍵啟動錄音，不怕再按錯觸發",
+      "item2": "快速切模式：按兩下或長按觸發鍵，不用進設定就能切換精簡和積極模式",
+      "item3": "切換時螢幕提示：切換成功後上方會顯示新模式名稱",
+      "item4": "錄音時看得到模式：小視窗會顯示目前用的語音模式",
+      "item5": "麥克風選擇器改善：顯示預設裝置名稱，還有音量預覽條",
+      "item6": "Toggle 模式不再重複貼上：修復了特定情境下文字被貼兩次的問題",
+      "item7": "錄音定位：目前專為短口語快速轉錄設計，暫不適合長時間會議錄音。未來會針對長錄音場景持續優化",
       "dismiss": "了解"
     }
   }
