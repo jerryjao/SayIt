@@ -417,6 +417,7 @@ pub fn run() {
             get_hud_target_position,
             plugins::audio_control::mute_system_audio,
             plugins::audio_control::restore_system_audio,
+            plugins::clipboard_paste::capture_target_window,
             plugins::clipboard_paste::copy_to_clipboard,
             plugins::clipboard_paste::paste_text,
             plugins::hotkey_listener::check_accessibility_permission_command,
@@ -445,6 +446,8 @@ pub fn run() {
             app.manage(plugins::keyboard_monitor::KeyboardMonitorState::new());
             // 初始化 audio control 狀態
             app.manage(plugins::audio_control::AudioControlState::new());
+            // 初始化 clipboard focus 狀態（Windows 貼上前恢復焦點）
+            app.manage(plugins::clipboard_paste::FocusState::new());
             // 初始化 audio recorder 狀態
             app.manage(plugins::audio_recorder::AudioRecorderState::new());
             // 初始化 transcription 狀態（共用 HTTP client）

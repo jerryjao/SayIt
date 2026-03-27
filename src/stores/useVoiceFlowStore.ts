@@ -874,6 +874,9 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     lastFailedRmsEnergyLevel.value = 0;
     isRetryAttempt.value = false;
 
+    // 捕獲當前前景視窗（Windows: HUD show 前記住目標，貼上前恢復焦點）
+    void invoke("capture_target_window").catch(() => {});
+
     try {
       playSoundIfEnabled("play_start_sound");
       delayedMuteTimer = setTimeout(() => {
