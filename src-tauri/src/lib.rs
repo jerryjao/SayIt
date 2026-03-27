@@ -424,6 +424,8 @@ pub fn run() {
             plugins::hotkey_listener::open_accessibility_settings,
             plugins::hotkey_listener::reinitialize_hotkey_listener,
             plugins::hotkey_listener::reset_hotkey_state,
+            plugins::hotkey_listener::start_hotkey_recording,
+            plugins::hotkey_listener::cancel_hotkey_recording,
             plugins::keyboard_monitor::start_quality_monitor,
             plugins::keyboard_monitor::start_correction_monitor,
             plugins::text_field_reader::read_focused_text_field,

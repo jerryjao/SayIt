@@ -32,6 +32,7 @@ import {
   HOTKEY_PRESSED,
   HOTKEY_RELEASED,
   HOTKEY_TOGGLED,
+  HOTKEY_MODE_TOGGLE,
   QUALITY_MONITOR_RESULT,
   VOICE_FLOW_STATE_CHANGED,
   CORRECTION_MONITOR_RESULT,
@@ -110,6 +111,14 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       lastFailedAudioFilePath.value !== null &&
       !isRetryAttempt.value,
   );
+
+  // Double-tap mode toggle state
+  let recordingStartTimestamp = 0;
+  let doubleTapResolve: ((isDoubleTap: boolean) => void) | null = null;
+  let doubleTapDelayTimer: ReturnType<typeof setTimeout> | null = null;
+  const modeSwitchLabel = ref<string>("");
+  let modeSwitchLabelTimer: ReturnType<typeof setTimeout> | null = null;
+  const MODE_SWITCH_LABEL_DURATION_MS = 3000;
 
   let lastMonitorKey = "";
   let isRepositioning = false;
@@ -824,6 +833,91 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     }
   }
 
+  function clearDoubleTapTimer() {
+    if (doubleTapDelayTimer) {
+      clearTimeout(doubleTapDelayTimer);
+      doubleTapDelayTimer = null;
+    }
+  }
+
+  function clearModeSwitchLabelTimer() {
+    if (modeSwitchLabelTimer) {
+      clearTimeout(modeSwitchLabelTimer);
+      modeSwitchLabelTimer = null;
+    }
+  }
+
+  /**
+   * Wait for double-tap resolution: returns true if mode-toggle event arrives
+   * within 400ms, false if timer expires (not a double-tap).
+   */
+  function waitForDoubleTapResolution(): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+      doubleTapResolve = resolve;
+      clearDoubleTapTimer();
+      doubleTapDelayTimer = setTimeout(() => {
+        doubleTapDelayTimer = null;
+        doubleTapResolve = null;
+        resolve(false);
+      }, 400);
+    });
+  }
+
+  function handleDoubleTapModeToggle() {
+    if (doubleTapResolve) {
+      // Hold mode double-tap: resolve the waiting promise
+      clearDoubleTapTimer();
+      const resolve = doubleTapResolve;
+      doubleTapResolve = null;
+      resolve(true);
+    } else {
+      // Toggle mode long-press: directly apply mode switch
+      applyDoubleTapModeSwitch();
+    }
+  }
+
+  function applyDoubleTapModeSwitch() {
+    isRecording.value = false;
+
+    // Toggle prompt mode: minimal ↔ active
+    const settingsStore = useSettingsStore();
+    const currentMode = settingsStore.promptMode;
+    const nextMode = currentMode === "minimal" ? "active" : "minimal";
+    settingsStore.promptMode = nextMode;
+    void settingsStore.savePromptMode(nextMode).catch((err) => {
+      writeErrorLog(
+        `useVoiceFlowStore: savePromptMode failed: ${extractErrorMessage(err)}`,
+      );
+    });
+
+    // Flash mode label on HUD — follow the same pattern as transitionTo("success"):
+    // show for N seconds, then transitionTo("idle") which triggers collapse animation.
+    const modeLabel =
+      nextMode === "minimal"
+        ? t("settings.prompt.modeMinimal")
+        : t("settings.prompt.modeActive");
+    modeSwitchLabel.value = modeLabel;
+    clearModeSwitchLabelTimer();
+
+    // Show HUD with mode-switch visual
+    showHud().catch((err) => {
+      writeErrorLog(
+        `useVoiceFlowStore: showHud failed: ${extractErrorMessage(err)}`,
+      );
+    });
+
+    // After display duration, clear label and transition to idle (triggers collapse + hide)
+    modeSwitchLabelTimer = setTimeout(() => {
+      modeSwitchLabel.value = "";
+      modeSwitchLabelTimer = null;
+      transitionTo("idle");
+    }, MODE_SWITCH_LABEL_DURATION_MS);
+
+    writeInfoLog(
+      `useVoiceFlowStore: double-tap mode toggle → ${nextMode}`,
+    );
+  }
+
   function handleEscapeAbort() {
     const currentStatus = status.value;
     if (
@@ -846,6 +940,16 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
       stopElapsedTimer();
     }
 
+    // Resolve pending double-tap Promise (prevents handleStopRecording from hanging)
+    if (doubleTapResolve) {
+      clearDoubleTapTimer();
+      const resolve = doubleTapResolve;
+      doubleTapResolve = null;
+      resolve(false);
+    }
+    clearModeSwitchLabelTimer();
+    modeSwitchLabel.value = "";
+
     // 完整清理所有進行中的資源
     clearDelayedMuteTimer();
     stopMonitorPolling();
@@ -862,6 +966,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   async function handleStartRecording() {
     if (isRecording.value) return;
     isRecording.value = true;
+    recordingStartTimestamp = performance.now();
     isAborted.value = false;
     abortController = new AbortController();
     lastWasModified.value = null;
@@ -904,6 +1009,25 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
   async function handleStopRecording() {
     if (!isRecording.value) return;
     if (isAborted.value) return;
+
+    // Pre-estimate duration for double-tap detection (before any async work).
+    // Use precise timestamp — recordingElapsedSeconds has 1s resolution, too coarse for 300ms threshold.
+    // Rust double-tap max hold is 300ms; 350ms here adds 50ms buffer for IPC latency.
+    const estimatedDurationMs = performance.now() - recordingStartTimestamp;
+    if (estimatedDurationMs < 350) {
+      const isDoubleTap = await waitForDoubleTapResolution();
+      if (isAborted.value) return;
+      if (isDoubleTap) {
+        // Double-tap confirmed: silently cancel, apply mode switch
+        stopElapsedTimer();
+        clearDelayedMuteTimer();
+        void restoreSystemAudio();
+        void invoke("stop_recording").catch(() => {});
+        applyDoubleTapModeSwitch();
+        return;
+      }
+      // Not a double-tap — fall through to normal stop flow
+    }
 
     clearDelayedMuteTimer();
     await restoreSystemAudio();
@@ -1555,6 +1679,9 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
           );
         },
       ),
+      listenToEvent(HOTKEY_MODE_TOGGLE, () => {
+        handleDoubleTapModeToggle();
+      }),
       listenToEvent<HotkeyErrorPayload>(HOTKEY_ERROR, (event) => {
         const hudMessage = getHotkeyErrorMessage(event.payload.error);
         if (
@@ -1588,6 +1715,8 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     clearCollapseHideTimer();
     clearDelayedMuteTimer();
     clearLearnedHideTimer();
+    clearDoubleTapTimer();
+    clearModeSwitchLabelTimer();
     stopMonitorPolling();
     stopElapsedTimer();
     stopCorrectionSnapshotPolling();
@@ -1605,6 +1734,7 @@ export const useVoiceFlowStore = defineStore("voice-flow", () => {
     recordingElapsedSeconds,
     lastWasModified,
     canRetry,
+    modeSwitchLabel,
     initialize,
     cleanup,
     handleRetryTranscription,

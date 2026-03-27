@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { invoke } from "@tauri-apps/api/core";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import {
   useSettingsStore,
   DEFAULT_ENHANCEMENT_THRESHOLD_ENABLED,
@@ -10,10 +12,25 @@ import { extractErrorMessage } from "../lib/errorUtils";
 import { useFeedbackMessage } from "../composables/useFeedbackMessage";
 import { useHistoryStore } from "../stores/useHistoryStore";
 import {
+  listenToEvent,
+  HOTKEY_RECORDING_CAPTURED,
+  HOTKEY_RECORDING_REJECTED,
+} from "../composables/useTauriEvents";
+import {
   type PresetTriggerKey,
+  type ComboTriggerKey,
   isCustomTriggerKey,
+  isComboTriggerKey,
 } from "../types/settings";
+import type {
+  RecordingCapturedPayload,
+  RecordingRejectedPayload,
+} from "../types/events";
 import type { TriggerMode } from "../types";
+import {
+  getDomCodeByKeycode,
+  getKeyDisplayNameByKeycode,
+} from "../lib/keycodeMap";
 import {
   LLM_MODEL_LIST,
   VOCABULARY_ANALYSIS_MODEL_LIST,
@@ -76,7 +93,6 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-vue-next";
-import { invoke } from "@tauri-apps/api/core";
 import type { AudioInputDeviceInfo } from "../types/audio";
 import { useAudioPreview } from "../composables/useAudioPreview";
 
@@ -118,6 +134,10 @@ let recordingTimeoutId: ReturnType<typeof setTimeout> | undefined;
 const RECORDING_TIMEOUT_MS = 10_000;
 
 const currentCustomKeyDisplay = computed(() => {
+  const key = settingsStore.hotkeyConfig?.triggerKey;
+  if (key && isComboTriggerKey(key)) {
+    return settingsStore.getTriggerKeyDisplayName(key);
+  }
   if (!settingsStore.customTriggerKeyDomCode) return "";
   return settingsStore.getKeyDisplayName(settingsStore.customTriggerKeyDomCode);
 });
@@ -126,71 +146,108 @@ const hasCustomKey = computed(() => settingsStore.customTriggerKey !== null);
 
 const currentPresetKey = computed(() => {
   const key = settingsStore.hotkeyConfig?.triggerKey;
-  if (!key || isCustomTriggerKey(key)) return isMac ? "fn" : "rightAlt";
+  if (!key || isCustomTriggerKey(key) || isComboTriggerKey(key)) return isMac ? "fn" : "rightAlt";
   return key;
 });
 
-async function handleKeydownForRecording(event: KeyboardEvent) {
-  event.preventDefault();
-  event.stopPropagation();
+let recordingUnlisteners: UnlistenFn[] = [];
 
-  // ESC 已保留為全域中斷鍵，拒絕設定並顯示錯誤
-  if (event.code === "Escape") {
-    hotkeyFeedback.show("error", settingsStore.getEscapeReservedMessage());
-    stopKeyRecording();
-    return;
-  }
-
-  const domCode = event.code;
-  const keycode = settingsStore.getPlatformKeycode(domCode);
-
-  if (keycode === null) {
-    hotkeyFeedback.show("error", settingsStore.getHotkeyUnsupportedKeyMessage());
-    stopKeyRecording();
-    return;
-  }
-
+async function handleRecordingCaptured(payload: RecordingCapturedPayload) {
+  const { keycode, modifiers } = payload;
   recordingWarning.value = "";
   recordingHint.value = "";
 
-  const isPresetEquivalent = settingsStore.isPresetEquivalentKey(domCode);
-
-  // Check dangerous key (R17: skip danger warning if preset-equivalent)
-  if (!isPresetEquivalent) {
-    const dangerWarning = settingsStore.getDangerousKeyWarning(domCode);
-    if (dangerWarning) {
-      recordingWarning.value = dangerWarning;
-    }
-  }
-
-  // Check preset equivalent
-  if (isPresetEquivalent) {
-    recordingHint.value = settingsStore.getHotkeyPresetHint();
-  }
-
-  // Save the custom key (R15: await instead of fire-and-forget)
   const currentMode = settingsStore.triggerMode;
   stopKeyRecording();
-  try {
-    await settingsStore.saveCustomTriggerKey(keycode, domCode, currentMode);
-    hotkeyFeedback.show("success", t("settings.hotkey.keySet", { key: settingsStore.getKeyDisplayName(domCode) }));
-  } catch (err) {
-    hotkeyFeedback.show("error", extractErrorMessage(err));
+
+  const domCode = getDomCodeByKeycode(keycode);
+
+  if (modifiers.length > 0) {
+    // Combo key: modifier(s) + primary key
+    if (domCode) {
+      const dangerWarning = settingsStore.getDangerousKeyWarning(domCode);
+      if (dangerWarning) {
+        recordingWarning.value = dangerWarning;
+      }
+    }
+
+    const comboKey: ComboTriggerKey = {
+      combo: { modifiers, keycode },
+    };
+    try {
+      await settingsStore.saveComboTriggerKey(comboKey, domCode ?? "", currentMode);
+      hotkeyFeedback.show(
+        "success",
+        t("settings.hotkey.keySet", { key: settingsStore.getTriggerKeyDisplayName(comboKey) }),
+      );
+    } catch (err) {
+      hotkeyFeedback.show("error", extractErrorMessage(err));
+    }
+  } else {
+    // Single key
+    const isPresetEquivalent = domCode ? settingsStore.isPresetEquivalentKey(domCode) : false;
+
+    if (domCode && !isPresetEquivalent) {
+      const dangerWarning = settingsStore.getDangerousKeyWarning(domCode);
+      if (dangerWarning) {
+        recordingWarning.value = dangerWarning;
+      }
+    }
+
+    if (isPresetEquivalent) {
+      recordingHint.value = settingsStore.getHotkeyPresetHint();
+    }
+
+    try {
+      await settingsStore.saveCustomTriggerKey(keycode, domCode ?? "", currentMode);
+      const displayName = domCode
+        ? settingsStore.getKeyDisplayName(domCode)
+        : getKeyDisplayNameByKeycode(keycode);
+      hotkeyFeedback.show(
+        "success",
+        t("settings.hotkey.keySet", { key: displayName }),
+      );
+    } catch (err) {
+      hotkeyFeedback.show("error", extractErrorMessage(err));
+    }
   }
 }
 
-function startRecording() {
+function handleRecordingRejected(payload: RecordingRejectedPayload) {
+  stopKeyRecording();
+  if (payload.reason === "esc_reserved") {
+    hotkeyFeedback.show("error", settingsStore.getEscapeReservedMessage());
+  }
+}
+
+async function startRecording() {
   isRecording.value = true;
   recordingWarning.value = "";
   recordingHint.value = "";
 
-  // Dynamic keydown listener (Review F11)
-  document.addEventListener("keydown", handleKeydownForRecording, {
-    capture: true,
-    once: true,
-  });
+  // Tell Rust to enter recording mode
+  try {
+    await invoke("start_hotkey_recording");
+  } catch (err) {
+    hotkeyFeedback.show("error", extractErrorMessage(err));
+    isRecording.value = false;
+    return;
+  }
 
-  // 10s timeout (Review F3)
+  // Listen for Rust recording events
+  const [unlistenCaptured, unlistenRejected] = await Promise.all([
+    listenToEvent<RecordingCapturedPayload>(
+      HOTKEY_RECORDING_CAPTURED,
+      (event) => void handleRecordingCaptured(event.payload),
+    ),
+    listenToEvent<RecordingRejectedPayload>(
+      HOTKEY_RECORDING_REJECTED,
+      (event) => handleRecordingRejected(event.payload),
+    ),
+  ]);
+  recordingUnlisteners = [unlistenCaptured, unlistenRejected];
+
+  // 10s timeout
   recordingTimeoutId = setTimeout(() => {
     if (isRecording.value) {
       hotkeyFeedback.show("error", settingsStore.getHotkeyRecordingTimeoutMessage());
@@ -200,11 +257,16 @@ function startRecording() {
 }
 
 function stopKeyRecording() {
+  if (!isRecording.value) return;
   isRecording.value = false;
   clearTimeout(recordingTimeoutId);
-  document.removeEventListener("keydown", handleKeydownForRecording, {
-    capture: true,
-  });
+  // Cancel Rust recording mode
+  void invoke("cancel_hotkey_recording").catch(() => {});
+  // Clean up event listeners
+  for (const unlisten of recordingUnlisteners) {
+    unlisten();
+  }
+  recordingUnlisteners = [];
 }
 
 function switchToCustom() {
@@ -706,9 +768,9 @@ onMounted(async () => {
   recordingAutoCleanupDays.value = settingsStore.recordingAutoCleanupDays;
   await settingsStore.loadAutoStartStatus();
 
-  // Detect if current key is custom
+  // Detect if current key is custom or combo
   const currentKey = settingsStore.hotkeyConfig?.triggerKey;
-  if (currentKey && isCustomTriggerKey(currentKey)) {
+  if (currentKey && (isCustomTriggerKey(currentKey) || isComboTriggerKey(currentKey))) {
     isCustomMode.value = true;
   }
 });
@@ -913,6 +975,14 @@ onBeforeUnmount(() => {
             settingsStore.triggerMode === "hold"
               ? $t("settings.hotkey.holdDescription")
               : $t("settings.hotkey.toggleDescription")
+          }}
+        </p>
+
+        <p class="text-xs text-muted-foreground">
+          {{
+            settingsStore.triggerMode === "hold"
+              ? $t("settings.hotkey.doubleTapHint")
+              : $t("settings.hotkey.longPressHint")
           }}
         </p>
 
@@ -1340,8 +1410,8 @@ onBeforeUnmount(() => {
                   {{
                     defaultInputDeviceName
                       ? $t("settings.audioInput.systemDefaultWithDevice", {
-                          device: defaultInputDeviceName,
-                        })
+                        device: defaultInputDeviceName,
+                      })
                       : $t("settings.audioInput.systemDefault")
                   }}
                 </SelectItem>

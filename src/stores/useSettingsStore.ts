@@ -7,13 +7,16 @@ import {
   type HotkeyConfig,
   type TriggerKey,
   type CustomTriggerKey,
+  type ComboTriggerKey,
   type PromptMode,
   PROMPT_MODE_VALUES,
   isCustomTriggerKey,
+  isComboTriggerKey,
   isPresetTriggerKey,
 } from "../types/settings";
 import {
   getKeyDisplayName,
+  getComboTriggerKeyDisplayName,
   getPlatformKeycode,
   isPresetEquivalentKey,
   getDangerousKeyWarning,
@@ -107,7 +110,7 @@ export const useSettingsStore = defineStore("settings", () => {
     DEFAULT_VOCABULARY_ANALYSIS_MODEL_ID,
   );
   const selectedWhisperModelId = ref<WhisperModelId>(DEFAULT_WHISPER_MODEL_ID);
-  const customTriggerKey = ref<CustomTriggerKey | null>(null);
+  const customTriggerKey = ref<CustomTriggerKey | ComboTriggerKey | null>(null);
   const isMuteOnRecordingEnabled = ref<boolean>(DEFAULT_MUTE_ON_RECORDING);
   const isSmartDictionaryEnabled = ref<boolean>(
     DEFAULT_SMART_DICTIONARY_ENABLED,
@@ -167,13 +170,18 @@ export const useSettingsStore = defineStore("settings", () => {
       hotkeyConfig.value = { triggerKey: key, triggerMode: mode };
       apiKey.value = savedApiKey?.trim() ?? "";
 
-      // Load independently persisted custom key
+      // Load independently persisted custom/combo key
       const savedCustomKey =
-        await store.get<CustomTriggerKey>("customTriggerKey");
+        await store.get<TriggerKey>("customTriggerKey");
       const savedCustomDomCode = await store.get<string>(
         "customTriggerKeyDomCode",
       );
-      if (savedCustomKey && isCustomTriggerKey(savedCustomKey)) {
+      if (
+        savedCustomKey &&
+        typeof savedCustomKey === "object" &&
+        (isCustomTriggerKey(savedCustomKey) ||
+          isComboTriggerKey(savedCustomKey))
+      ) {
         customTriggerKey.value = savedCustomKey;
         customTriggerKeyDomCode.value = savedCustomDomCode ?? "";
       }
@@ -392,6 +400,34 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  async function saveComboTriggerKey(
+    comboKey: ComboTriggerKey,
+    domCode: string,
+    mode: TriggerMode,
+  ) {
+    try {
+      const store = await load(STORE_NAME);
+      await store.set("customTriggerKey", comboKey);
+      await store.set("customTriggerKeyDomCode", domCode);
+      await store.save();
+
+      customTriggerKey.value = comboKey;
+      customTriggerKeyDomCode.value = domCode;
+
+      await saveHotkeyConfig(comboKey, mode);
+
+      console.log(
+        `[useSettingsStore] Combo trigger key saved: modifiers=${JSON.stringify(comboKey.combo.modifiers)}, keycode=${comboKey.combo.keycode}, domCode=${domCode}, mode=${mode}`,
+      );
+    } catch (err) {
+      console.error(
+        "[useSettingsStore] saveComboTriggerKey failed:",
+        extractErrorMessage(err),
+      );
+      throw err;
+    }
+  }
+
   async function switchToPresetMode(presetKey: TriggerKey, mode: TriggerMode) {
     // Only update active key; keep customTriggerKey intact
     await saveHotkeyConfig(presetKey, mode);
@@ -407,13 +443,19 @@ export const useSettingsStore = defineStore("settings", () => {
     if (isPresetTriggerKey(key)) {
       return PRESET_KEY_DISPLAY_NAMES[key] ?? key;
     }
-    // For custom keys, use saved DOM code to look up display name
-    if (customTriggerKeyDomCode.value) {
-      return getKeyDisplayName(customTriggerKeyDomCode.value);
+    if (isComboTriggerKey(key)) {
+      return getComboTriggerKeyDisplayName(key);
     }
-    return i18n.global.t("settings.hotkey.customKeyDisplay", {
-      keycode: key.custom.keycode,
-    });
+    if (isCustomTriggerKey(key)) {
+      // For custom keys, use saved DOM code to look up display name
+      if (customTriggerKeyDomCode.value) {
+        return getKeyDisplayName(customTriggerKeyDomCode.value);
+      }
+      return i18n.global.t("settings.hotkey.customKeyDisplay", {
+        keycode: key.custom.keycode,
+      });
+    }
+    return String(key);
   }
 
   async function saveApiKey(key: string) {
@@ -931,7 +973,7 @@ export const useSettingsStore = defineStore("settings", () => {
       const savedKey = await store.get<TriggerKey>("hotkeyTriggerKey");
       const savedMode = await store.get<TriggerMode>("hotkeyTriggerMode");
       const savedCustomKey =
-        await store.get<CustomTriggerKey>("customTriggerKey");
+        await store.get<TriggerKey>("customTriggerKey");
       const savedCustomDomCode = await store.get<string>(
         "customTriggerKeyDomCode",
       );
@@ -958,14 +1000,15 @@ export const useSettingsStore = defineStore("settings", () => {
         triggerKey: savedKey ?? getDefaultTriggerKey(),
         triggerMode: savedMode ?? "hold",
       };
-      customTriggerKey.value =
-        savedCustomKey && isCustomTriggerKey(savedCustomKey)
-          ? savedCustomKey
-          : null;
-      customTriggerKeyDomCode.value =
-        savedCustomKey && isCustomTriggerKey(savedCustomKey)
-          ? (savedCustomDomCode ?? "")
-          : "";
+      const isValidCustomOrCombo =
+        savedCustomKey &&
+        typeof savedCustomKey === "object" &&
+        (isCustomTriggerKey(savedCustomKey) ||
+          isComboTriggerKey(savedCustomKey));
+      customTriggerKey.value = isValidCustomOrCombo ? savedCustomKey : null;
+      customTriggerKeyDomCode.value = isValidCustomOrCombo
+        ? (savedCustomDomCode ?? "")
+        : "";
       // Locale + transcription locale must be synced first — aiPrompt fallback depends on them
       const savedLocale = await store.get<SupportedLocale>("selectedLocale");
       selectedLocale.value = savedLocale ?? FALLBACK_LOCALE;
@@ -1079,6 +1122,7 @@ export const useSettingsStore = defineStore("settings", () => {
     loadSettings,
     saveHotkeyConfig,
     saveCustomTriggerKey,
+    saveComboTriggerKey,
     switchToPresetMode,
     switchToCustomMode,
     getTriggerKeyDisplayName,

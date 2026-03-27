@@ -75,3 +75,12 @@ export interface CorrectionMonitorResultPayload {
 export interface VocabularyLearnedPayload {
   termList: string[];
 }
+
+export interface RecordingCapturedPayload {
+  keycode: number;
+  modifiers: import("./settings").ModifierFlag[];
+}
+
+export interface RecordingRejectedPayload {
+  reason: string;
+}

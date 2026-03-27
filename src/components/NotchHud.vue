@@ -23,13 +23,16 @@ type VisualMode =
   | "error"
   | "cancelled"
   | "collapsing"
-  | "learned";
+  | "learned"
+  | "mode-switch";
 
 const props = defineProps<{
   status: HudStatus;
   recordingElapsedSeconds: number;
   message: string;
   canRetry: boolean;
+  promptModeLabel: string;
+  modeSwitchLabel: string;
 }>();
 
 defineEmits<{
@@ -71,6 +74,7 @@ const DEFAULT_NOTCH_SHAPE: NotchShapeParams = {
 
 const NOTCH_SHAPE_OVERRIDES: Partial<Record<VisualMode, NotchShapeParams>> = {
   collapsing: { width: 200, height: 32, topRadius: 10, bottomRadius: 16 },
+  "mode-switch": { width: 200, height: 36, topRadius: 12, bottomRadius: 18 },
 };
 
 function buildNotchPath(p: NotchShapeParams): string {
@@ -231,6 +235,26 @@ function handleVocabularyLearned(payload: VocabularyLearnedPayload) {
   showLearnedNotification(payload.termList);
 }
 
+let modeSwitchTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearModeSwitchTimer() {
+  if (modeSwitchTimer) {
+    clearTimeout(modeSwitchTimer);
+    modeSwitchTimer = null;
+  }
+}
+
+watch(
+  () => props.modeSwitchLabel,
+  (label) => {
+    if (!label) return;
+    // Label set → show mode-switch visual (collapse handled by status watcher when idle arrives)
+    clearModeSwitchTimer();
+    clearCollapsingTimer();
+    visualMode.value = "mode-switch";
+  },
+);
+
 watch(
   () => props.status,
   (nextStatus) => {
@@ -241,6 +265,7 @@ watch(
     if (nextStatus === "idle") {
       stopWaveformAnimation();
       if (visualMode.value === "learned") return;
+      if (visualMode.value === "mode-switch") return;
       if (visualMode.value === "hidden") {
         processNextLearnedNotification();
         return;
@@ -309,6 +334,7 @@ onUnmounted(() => {
   clearMorphingTimer();
   clearCollapsingTimer();
   clearLearnedTimer();
+  clearModeSwitchTimer();
   stopWaveformAnimation();
   unlistenVocabularyLearned?.();
 });
@@ -401,9 +427,15 @@ onUnmounted(() => {
           <span v-else-if="visualMode === 'learned'" class="learned-label">
             {{ $t('voiceFlow.vocabularyLearnedLabel') }}
           </span>
-          <span v-else-if="visualMode === 'recording'" class="elapsed-timer">
-            {{ formattedElapsedTime }}
+          <span v-else-if="visualMode === 'mode-switch'" class="mode-switch-label">
+            {{ props.modeSwitchLabel }}
           </span>
+          <template v-else-if="visualMode === 'recording'">
+            <span v-if="props.promptModeLabel" class="prompt-mode-badge">{{ props.promptModeLabel }}</span>
+            <span class="elapsed-timer">
+              {{ formattedElapsedTime }}
+            </span>
+          </template>
           <span
             v-else-if="visualMode === 'error' && canRetry"
             class="retry-icon"
@@ -688,6 +720,31 @@ onUnmounted(() => {
 @keyframes cancelledTextFadeIn {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Mode Switch ---- */
+.mode-switch-label {
+  color: rgba(167, 139, 250, 0.95);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  animation: modeSwitchFadeIn 0.3s ease-out;
+}
+
+@keyframes modeSwitchFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ---- Prompt Mode Badge (recording) ---- */
+.prompt-mode-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.15);
+  color: rgba(255, 255, 255, 0.7);
+  white-space: nowrap;
+  margin-right: 6px;
 }
 
 /* ---- Error: scatter + shake ---- */
