@@ -2,6 +2,28 @@
 
 SayIt 版本更新紀錄。
 
+## [0.9.0] - 2026-03-28
+
+### Added
+
+- 編輯選取文字功能：選取文字後觸發 SayIt，語音變成 AI 指令（翻譯、改寫、摘要等），處理結果直接取代原文
+- Rust `read_selected_text` command：macOS AXSelectedText 讀取選取文字，共用 `FocusedElementContext` AX 走訪結構
+- 功能介紹頁面：側邊欄新增「功能介紹」（Lightbulb icon），展示 8 個操作功能卡片
+- Edit mode prompt 模板：五語系編輯模式專用 prompt（`EDIT_MODE_PROMPTS`）
+- `EnhanceOptions.maxTokens`：edit mode 使用 4096（既有增強為 2048）
+- DB migration v7→v8：`is_edit_mode`、`edit_source_text` 欄位
+- HUD 琥珀色「編輯」badge + `HudStatus: "editing"` 狀態
+- 升級通知新增 item9（編輯選取文字）並依亮點重新排序
+
+### Improved
+
+- Rust `text_field_reader.rs` 重構：提取 `FocusedElementContext` struct 消除 ~50 行重複 AX 走訪邏輯
+- `isEditMode` 改為 computed（從 `editSourceText` 推導），消除冗餘 state
+- `read_selected_text` 非阻塞偵測（`.then()`），不延遲開始音效
+- HUD badge CSS 提取 `.hud-badge` 共用 base class
+- `useHistoryStore` SQL SELECT 欄位提取 `TRANSCRIPTION_SELECT_COLUMNS` 常數
+- 功能介紹文案改為生活化口吻（五語系）
+
 ## [0.8.9] - 2026-03-19
 
 ### Fixed
