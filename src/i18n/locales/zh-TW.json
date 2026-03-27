@@ -263,6 +263,7 @@
     },
     "network": "網路連線中斷",
     "transcription": {
+      "fileTooLarge": "錄音檔案過大，請縮短錄音時間",
       "invalidAudio": "音檔格式無效或錄音資料不完整",
       "invalidApiKey": "API Key 無效或已過期",
       "rateLimited": "請求過於頻繁，稍後再試",

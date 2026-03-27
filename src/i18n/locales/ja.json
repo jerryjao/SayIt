@@ -263,6 +263,7 @@
     },
     "network": "ネットワーク接続が切断されました",
     "transcription": {
+      "fileTooLarge": "録音ファイルが大きすぎます。録音時間を短くしてください",
       "invalidAudio": "音声ファイルの形式が無効、または録音データが不完全です",
       "invalidApiKey": "API Key が無効または期限切れです",
       "rateLimited": "リクエストが多すぎます。しばらくしてから再試行してください",

@@ -263,6 +263,7 @@
     },
     "network": "네트워크 연결이 끊어졌습니다",
     "transcription": {
+      "fileTooLarge": "녹음 파일이 너무 큽니다. 녹음 시간을 줄여주세요",
       "invalidAudio": "오디오 형식이 유효하지 않거나 녹음 데이터가 불완전합니다",
       "invalidApiKey": "API Key가 유효하지 않거나 만료되었습니다",
       "rateLimited": "요청이 너무 빈번합니다. 잠시 후 다시 시도하세요",

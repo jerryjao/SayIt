@@ -263,6 +263,7 @@
     },
     "network": "网络连接中断",
     "transcription": {
+      "fileTooLarge": "录音文件过大，请缩短录音时间",
       "invalidAudio": "音频格式无效或录音数据不完整",
       "invalidApiKey": "API Key 无效或已过期",
       "rateLimited": "请求过于频繁，稍后再试",

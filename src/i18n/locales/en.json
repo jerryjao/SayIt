@@ -263,6 +263,7 @@
     },
     "network": "Network connection lost",
     "transcription": {
+      "fileTooLarge": "Recording file too large. Please shorten your recording",
       "invalidAudio": "Invalid audio format or incomplete recording data",
       "invalidApiKey": "API Key is invalid or expired",
       "rateLimited": "Too many requests. Please try again later",
