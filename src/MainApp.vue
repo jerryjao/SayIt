@@ -372,11 +372,11 @@ onUnmounted(() => {
       <AlertDialogHeader>
         <AlertDialogTitle>{{ $t("mainApp.upgradeNotice.title") }}</AlertDialogTitle>
         <AlertDialogDescription as="div">
-          <ul class="mt-2 space-y-1.5 text-sm text-muted-foreground">
+          <ol class="mt-2 space-y-3 text-sm text-muted-foreground list-decimal list-inside">
             <li v-for="i in upgradeNoticeItemCount" :key="i">
               {{ $t(`mainApp.upgradeNotice.item${i}`) }}
             </li>
-          </ul>
+          </ol>
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
