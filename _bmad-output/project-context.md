@@ -2,9 +2,9 @@
 project_name: 'sayit'
 user_name: 'Jackle'
 date: '2026-03-28'
-sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n', 'smart_dictionary', 'model_registry_v2', 'esc_global_abort', 'hallucination_v3', 'sound_feedback', 'enhancement_anomaly', 'audio_input_device', 'audio_preview', 'combo_hotkey', 'rust_driven_recording', 'edit_mode', 'feature_guide']
+sections_completed: ['technology_stack', 'language_rules', 'framework_rules', 'testing_rules', 'code_quality', 'workflow_rules', 'critical_rules', 'sentry_telemetry', 'i18n', 'smart_dictionary', 'model_registry_v2', 'esc_global_abort', 'hallucination_v3', 'sound_feedback', 'enhancement_anomaly', 'audio_input_device', 'audio_preview', 'combo_hotkey', 'rust_driven_recording', 'edit_mode', 'feature_guide', 'gemini_provider']
 status: 'complete'
-rule_count: 318
+rule_count: 323
 optimized_for_llm: true
 ---
 
@@ -86,16 +86,18 @@ _This file contains critical rules and patterns that AI agents must follow when 
   - **Groq** — `https://api.groq.com/openai/v1/chat/completions`，Bearer auth，timeout 5s，模型：Llama 3.3 70B（預設）/ Qwen3 32B / Llama 4 Scout 17B
   - **OpenAI** — `https://api.openai.com/v1/chat/completions`，Bearer auth，使用 `max_completion_tokens`（非 `max_tokens`），timeout 30s，模型：GPT-5.4 Mini（預設）/ GPT-5.4 Nano
   - **Anthropic** — `https://api.anthropic.com/v1/messages`，`x-api-key` header + `anthropic-version: 2023-06-01`，system message 提取至頂層 `system` 欄位，timeout 30s，模型：Claude Haiku 4.5（預設）/ Claude 3.5 Haiku
+  - **Gemini** — `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`，`x-goog-api-key` header，model 在 URL（非 body），system message 用 `system_instruction.parts[].text`，user/assistant 用 `contents[].parts[].text`（assistant role → `"model"`），`generationConfig.maxOutputTokens`，timeout 30s，模型：Gemini 2.5 Flash（預設，免費 250 RPD）/ Gemini 2.5 Flash-Lite（免費 1,000 RPD）
+  - **Gemini finishReason 檢查** — `parseGeminiResponse` 檢查 `candidates[0].finishReason`，非 `STOP`/`MAX_TOKENS` 時拋出錯誤（如 `SAFETY`、`RECITATION`），避免安全過濾靜默 fallback
   - **Provider 抽象層** — `llmProvider.ts` 提供 `buildFetchParams()` / `parseProviderResponse()` 統一處理各 provider 差異
 - **模型註冊** — `src/lib/modelRegistry.ts` 集中管理：
-  - 兩組型別：`LlmModelId`（含 `LlmProviderId`）、`WhisperModelId`
+  - 兩組型別：`LlmModelId`（含 `LlmProviderId = "groq" | "gemini" | "openai" | "anthropic"`）、`WhisperModelId`
   - 兩個獨立模型清單：`LLM_MODEL_LIST`、`WHISPER_MODEL_LIST`
   - 兩個安全取得函式：`getEffectiveLlmModelId()`、`getEffectiveWhisperModelId()`
   - 新增 helper：`getModelListByProvider()`、`getDefaultModelIdForProvider()`、`getProviderIdForModel()`
   - 每個 `LlmModelConfig` 必須包含 `providerId` 欄位
   - 價格、免費配額、Badge 標籤（`badgeKey`）
   - **下架遷移機制** — `DECOMMISSIONED_MODEL_MAP: Record<string, LlmModelId>`，舊 ID → 新 ID 映射，`getEffectiveLlmModelId()` 自動遷移（僅 LLM 模型，Whisper 直接 fallback 預設）
-- CSP 白名單：`connect-src 'self' https://api.groq.com https://api.openai.com https://api.anthropic.com`
+- CSP 白名單：`connect-src 'self' https://api.groq.com https://generativelanguage.googleapis.com https://api.openai.com https://api.anthropic.com`
 
 ### Sentry/Telemetry 整合
 
@@ -571,7 +573,7 @@ src/
 │   ├── apiPricing.ts        # API 費用上限計算（Whisper + LLM）
 │   └── utils.ts             # cn() shadcn-vue 工具函式
 ├── stores/               # Pinia stores
-│   ├── useSettingsStore.ts      # 快捷鍵 / API Key (Groq/OpenAI/Anthropic) / LLM Provider / AI Prompt / Prompt Mode / 開機啟動 / UI locale / 轉錄 locale / Whisper 語言
+│   ├── useSettingsStore.ts      # 快捷鍵 / API Key (Groq/Gemini/OpenAI/Anthropic) / LLM Provider / AI Prompt / Prompt Mode / 開機啟動 / UI locale / 轉錄 locale / Whisper 語言
 │   ├── useHistoryStore.ts       # 歷史記錄 CRUD + Dashboard 統計 + 分頁
 │   ├── useVocabularyStore.ts    # 詞彙字典 CRUD + 權重系統 + AI 推薦詞管理
 │   └── useVoiceFlowStore.ts     # 錄音/轉錄/AI 整理/貼上/修正偵測/字典學習完整流程
@@ -720,6 +722,8 @@ src/
 - **❌ 使用 ESC（keycode 53 / VK 0x1B）作為 Custom trigger key** — ESC 已保留為全域中斷鍵，`keycodeMap.ts` 的 `getDangerousKeyWarning("Escape")` 回傳 null（不走 warning 路徑），由 `getEscapeReservedMessage()` 提供 hard block 錯誤訊息
 - **❌ 重送成功時 INSERT 新 transcription 記錄** — 重送路徑必須使用 `completePasteFlow({ skipRecordSaving: true })` + `updateTranscriptionOnRetrySuccess()` UPDATE 現有 failed 記錄，禁止 INSERT（PK 衝突 + FK 787 錯誤）
 - **❌ 重送的 API usage 不等 transcription UPDATE 完成** — `saveApiUsageRecordList` 必須串接在 `updateTranscriptionOnRetrySuccess().then()` 之後，確保 FK 依賴正確
+- **❌ 新增 LLM Provider 但未更新 Tauri scope** — `capabilities/default.json` 的 `http:default.allow` 和 `tauri.conf.json` 的 CSP `connect-src` 必須同時加入新 API domain，否則 `fetch` 會被 `url not allowed on the configured scope` 拒絕
+- **❌ Gemini response finishReason 非 STOP 時靜默處理** — `parseGeminiResponse` 必須檢查 `finishReason`，SAFETY/RECITATION 等會回 200 OK 但內容為空，不檢查會靜默 fallback 到原始文字
 - **❌ `read_selected_text` 用 await 阻塞 hot path** — 必須用 `.then()` 非阻塞呼叫，避免模擬 Cmd+C ~100ms 延遲影響開始音效。結果在 `handleStopRecording` 前早已就緒
 - **❌ 編輯失敗時貼上任何東西** — edit mode LLM 失敗必須走 `failRecordingFlow()`，禁止 fallback 貼上語音指令（會覆蓋使用者選取的原文）
 - **❌ edit mode 使用 `detectEnhancementAnomaly`** — 翻譯/摘要會合法改變長度，禁止對 edit mode 結果做長度爆炸偵測
@@ -747,7 +751,7 @@ src/
 
 #### 安全規則
 
-- **CSP 硬限制** — `default-src 'self'; connect-src 'self' https://api.groq.com; media-src 'self' http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'`
+- **CSP 硬限制** — `default-src 'self'; connect-src 'self' https://api.groq.com https://generativelanguage.googleapis.com; media-src 'self' blob: http://asset.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'`
 - **API Key 不出本地** — 只在 tauri-plugin-store 中，不上傳、不寫入日誌、不透過 Events 傳播
 - **macOS 權限** — Accessibility 權限是全域熱鍵監聽的前提（CGEventTap）
 - **macOS Entitlements** — 需 `Entitlements.plist`，`macOSPrivateApi: true`
