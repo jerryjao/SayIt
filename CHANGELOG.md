@@ -2,6 +2,12 @@
 
 SayIt 版本更新紀錄。
 
+## [0.9.4] - 2026-04-07
+
+### Fixed
+
+- 自訂字典在某些 Windows 環境下新增詞彙時報「table vocabulary has no column named source」的問題（#27）：在 DB 初始化的關鍵表驗證階段新增冪等的 vocabulary column 自我修復邏輯，無論 schema_version 為何都會檢查並補上缺失的 weight/source 欄位
+
 ## [0.9.3] - 2026-03-28
 
 ### Fixed
