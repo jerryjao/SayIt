@@ -422,6 +422,25 @@ async function doInitializeDatabase(): Promise<Database> {
   // --- 關鍵表驗證與恢復 ---
   // 先前版本的 migration 可能因連線池覆蓋導致 DROP TABLE 後未 RENAME，
   // 若 api_usage 不存在則以最新 schema 重建（資料已遺失，但 app 可正常運作）
+
+  // vocabulary column 恢復（issue #27）：
+  // 某些 Windows 環境下 v3 migration 將 schema_version 推進到 ≥3，
+  // 但 weight/source column 卻沒成功落地，導致 INSERT 時報
+  // "table vocabulary has no column named source"。
+  // 這裡無條件重跑冪等的 addColumnIfNotExists，已存在則跳過、缺失則補上。
+  if (await tableExists(connection, "vocabulary")) {
+    await addColumnIfNotExists(
+      connection,
+      "vocabulary",
+      "weight INTEGER NOT NULL DEFAULT 1",
+    );
+    await addColumnIfNotExists(
+      connection,
+      "vocabulary",
+      "source TEXT NOT NULL DEFAULT 'manual'",
+    );
+  }
+
   if (!(await tableExists(connection, "api_usage"))) {
     // 可能有殘留的 api_usage_new（上次 migration 建了但沒 RENAME 成功）
     if (await tableExists(connection, "api_usage_new")) {
