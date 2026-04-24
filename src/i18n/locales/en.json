@@ -290,9 +290,10 @@
     "mic": {
       "default": "Microphone initialization failed",
       "permission": "Microphone permission is required to record",
-      "notFound": "No microphone detected",
-      "busy": "Microphone is in use by another application",
-      "configFailed": "Failed to read microphone configuration"
+      "notFound": "No microphone detected. Please check that your device is connected properly",
+      "busy": "Microphone is in use by another application. Please close Zoom, Teams, Discord, or other apps using the microphone and try again",
+      "configFailed": "Microphone configuration not supported. Please change the sample rate in Windows Sound settings or try a different device",
+      "backend": "Microphone driver error. Please reconnect the device or restart the application"
     },
     "network": "Network connection lost",
     "transcription": {

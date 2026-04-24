@@ -290,9 +290,10 @@
     "mic": {
       "default": "麦克风初始化失败",
       "permission": "需要麦克风权限才能录音",
-      "notFound": "未检测到麦克风设备",
-      "busy": "麦克风被其他程序占用",
-      "configFailed": "麦克风设置读取失败"
+      "notFound": "未检测到麦克风设备，请检查设备是否正确连接",
+      "busy": "麦克风被其他程序占用，请关闭 Zoom／Teams／Discord 等正在使用麦克风的程序后再试",
+      "configFailed": "麦克风设置不支持，请在 Windows 声音设置中切换采样率或更换设备",
+      "backend": "麦克风驱动发生错误，请重新插拔设备或重新启动应用程序"
     },
     "network": "网络连接中断",
     "transcription": {

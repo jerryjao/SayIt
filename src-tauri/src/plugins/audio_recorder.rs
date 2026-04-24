@@ -17,6 +17,14 @@ pub enum AudioRecorderError {
     NoInputDevice,
     #[error("Failed to get input config: {0}")]
     InputConfig(String),
+    #[error("Device in use (exclusive mode): {0}")]
+    DeviceInUse(String),
+    #[error("Device not available: {0}")]
+    DeviceNotAvailable(String),
+    #[error("Stream config not supported: {0}")]
+    StreamConfigNotSupported(String),
+    #[error("Backend error: {0}")]
+    BackendError(String),
     #[error("Failed to build audio stream: {0}")]
     BuildStream(String),
     #[error("Failed to start audio stream: {0}")]
@@ -425,12 +433,30 @@ fn run_recording_thread(
     let sample_rate = selection.sample_rate;
     let channels = selection.channels;
 
-    let stream = match build_input_stream(&device, &selection.supported_config, inner.clone(), app)
-    {
+    let stream = match build_input_stream(
+        &device,
+        &selection.supported_config,
+        inner.clone(),
+        app.clone(),
+    ) {
         Ok(stream) => stream,
-        Err(error) => {
-            let _ = ready_tx.send(Err(error));
-            return;
+        Err(first_error) => {
+            // Windows WASAPI can transiently fail (e.g. device switching); retry once after a short delay.
+            println!(
+                "[audio-recorder] build_input_stream failed ({}), retrying in 150ms…",
+                first_error
+            );
+            std::thread::sleep(std::time::Duration::from_millis(150));
+            match build_input_stream(&device, &selection.supported_config, inner.clone(), app) {
+                Ok(stream) => {
+                    println!("[audio-recorder] build_input_stream retry succeeded");
+                    stream
+                }
+                Err(retry_error) => {
+                    let _ = ready_tx.send(Err(retry_error));
+                    return;
+                }
+            }
         }
     };
 
@@ -457,7 +483,10 @@ fn run_recording_thread(
     // 已知限制：非預設裝置仍會因 Arc cycle 洩漏 ~1-2 KB/次（StreamInner + listener）。
     if let Err(e) = stream.pause() {
         // ⚠️ 安全相關：pause 失敗意味著麥克風可能仍在捕獲，且 drop 也無法停止
-        eprintln!("[audio-recorder] SECURITY: Failed to pause stream, mic may remain active: {:?}", e);
+        eprintln!(
+            "[audio-recorder] SECURITY: Failed to pause stream, mic may remain active: {:?}",
+            e
+        );
     }
     drop(stream);
     println!("[audio-recorder] Recording stopped, stream released");
@@ -490,7 +519,11 @@ fn run_preview_thread(
     println!(
         "[audio-preview] Using device: '{}' (requested: '{}')",
         device.name().unwrap_or_else(|_| "<unknown>".to_string()),
-        if device_name.is_empty() { "<system-default>" } else { &device_name }
+        if device_name.is_empty() {
+            "<system-default>"
+        } else {
+            &device_name
+        }
     );
 
     // ── 輸入格式 ──
@@ -512,16 +545,36 @@ fn run_preview_thread(
     let config = selection.supported_config.config();
 
     let build_result = match sample_format {
-        cpal::SampleFormat::I8 => build_preview_stream::<i8>(&device, &config, channels, accumulator_for_callback),
-        cpal::SampleFormat::I16 => build_preview_stream::<i16>(&device, &config, channels, accumulator_for_callback),
-        cpal::SampleFormat::I32 => build_preview_stream::<i32>(&device, &config, channels, accumulator_for_callback),
-        cpal::SampleFormat::I64 => build_preview_stream::<i64>(&device, &config, channels, accumulator_for_callback),
-        cpal::SampleFormat::U8 => build_preview_stream::<u8>(&device, &config, channels, accumulator_for_callback),
-        cpal::SampleFormat::U16 => build_preview_stream::<u16>(&device, &config, channels, accumulator_for_callback),
-        cpal::SampleFormat::U32 => build_preview_stream::<u32>(&device, &config, channels, accumulator_for_callback),
-        cpal::SampleFormat::U64 => build_preview_stream::<u64>(&device, &config, channels, accumulator_for_callback),
-        cpal::SampleFormat::F32 => build_preview_stream::<f32>(&device, &config, channels, accumulator_for_callback),
-        cpal::SampleFormat::F64 => build_preview_stream::<f64>(&device, &config, channels, accumulator_for_callback),
+        cpal::SampleFormat::I8 => {
+            build_preview_stream::<i8>(&device, &config, channels, accumulator_for_callback)
+        }
+        cpal::SampleFormat::I16 => {
+            build_preview_stream::<i16>(&device, &config, channels, accumulator_for_callback)
+        }
+        cpal::SampleFormat::I32 => {
+            build_preview_stream::<i32>(&device, &config, channels, accumulator_for_callback)
+        }
+        cpal::SampleFormat::I64 => {
+            build_preview_stream::<i64>(&device, &config, channels, accumulator_for_callback)
+        }
+        cpal::SampleFormat::U8 => {
+            build_preview_stream::<u8>(&device, &config, channels, accumulator_for_callback)
+        }
+        cpal::SampleFormat::U16 => {
+            build_preview_stream::<u16>(&device, &config, channels, accumulator_for_callback)
+        }
+        cpal::SampleFormat::U32 => {
+            build_preview_stream::<u32>(&device, &config, channels, accumulator_for_callback)
+        }
+        cpal::SampleFormat::U64 => {
+            build_preview_stream::<u64>(&device, &config, channels, accumulator_for_callback)
+        }
+        cpal::SampleFormat::F32 => {
+            build_preview_stream::<f32>(&device, &config, channels, accumulator_for_callback)
+        }
+        cpal::SampleFormat::F64 => {
+            build_preview_stream::<f64>(&device, &config, channels, accumulator_for_callback)
+        }
         other => Err(format!("Unsupported sample format: {}", other)),
     };
 
@@ -631,11 +684,7 @@ where
 
 /// 共用裝置選擇邏輯（F10 fix: 消除 recording/preview 間的重複）
 /// WORKAROUND: cpal 0.15.3 macOS CoreAudio 的 Arc cycle — 優先 default_input_device() 路徑
-fn select_input_device(
-    host: &cpal::Host,
-    device_name: &str,
-    tag: &str,
-) -> Option<cpal::Device> {
+fn select_input_device(host: &cpal::Host, device_name: &str, tag: &str) -> Option<cpal::Device> {
     if device_name.is_empty() {
         host.default_input_device()
     } else {
@@ -652,12 +701,9 @@ fn select_input_device(
             );
             default_device
         } else {
-            let found = host
-                .input_devices()
-                .ok()
-                .and_then(|mut devices| {
-                    devices.find(|d| d.name().map_or(false, |n| n == device_name))
-                });
+            let found = host.input_devices().ok().and_then(|mut devices| {
+                devices.find(|d| d.name().map_or(false, |n| n == device_name))
+            });
             if found.is_none() {
                 println!(
                     "[{}] Device '{}' not found, falling back to default",
@@ -786,67 +832,105 @@ where
     let mut total_mono_samples: usize = 0;
     let mut mono_batch: Vec<i16> = Vec::with_capacity(1024);
 
-    device
-        .build_input_stream(
-            config,
-            move |data: &[T], _: &cpal::InputCallbackInfo| {
-                mono_batch.clear();
+    let build_result = device.build_input_stream(
+        config,
+        move |data: &[T], _: &cpal::InputCallbackInfo| {
+            mono_batch.clear();
 
-                for chunk in data.chunks(chunk_size) {
-                    let mono = if chunk_size > 1 {
-                        chunk
-                            .iter()
-                            .map(|sample| sample.to_sample::<f32>())
-                            .sum::<f32>()
-                            / chunk_size as f32
-                    } else {
-                        chunk[0].to_sample::<f32>()
-                    };
+            for chunk in data.chunks(chunk_size) {
+                let mono = if chunk_size > 1 {
+                    chunk
+                        .iter()
+                        .map(|sample| sample.to_sample::<f32>())
+                        .sum::<f32>()
+                        / chunk_size as f32
+                } else {
+                    chunk[0].to_sample::<f32>()
+                };
 
-                    let sample =
-                        (mono * i16::MAX as f32).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
-                    mono_batch.push(sample);
+                let sample =
+                    (mono * i16::MAX as f32).clamp(i16::MIN as f32, i16::MAX as f32) as i16;
+                mono_batch.push(sample);
 
-                    ring_buffer[ring_pos] = mono;
-                    ring_pos = (ring_pos + 1) % FFT_SIZE;
-                    total_mono_samples += 1;
+                ring_buffer[ring_pos] = mono;
+                ring_pos = (ring_pos + 1) % FFT_SIZE;
+                total_mono_samples += 1;
+            }
+
+            if let Ok(mut samples) = inner_for_callback.samples.lock() {
+                samples.extend_from_slice(&mono_batch);
+            }
+
+            if total_mono_samples >= FFT_SIZE
+                && last_emit.elapsed().as_millis() >= WAVEFORM_EMIT_INTERVAL_MS
+            {
+                for (index, &sample) in ring_buffer.iter().enumerate() {
+                    fft_scratch[index] = Complex::new(sample, 0.0);
                 }
+                fft.process(&mut fft_scratch);
 
-                if let Ok(mut samples) = inner_for_callback.samples.lock() {
-                    samples.extend_from_slice(&mono_batch);
-                }
-
-                if total_mono_samples >= FFT_SIZE
-                    && last_emit.elapsed().as_millis() >= WAVEFORM_EMIT_INTERVAL_MS
-                {
-                    for (index, &sample) in ring_buffer.iter().enumerate() {
-                        fft_scratch[index] = Complex::new(sample, 0.0);
+                let mut levels = [0.0f32; 6];
+                for (index, &bin_idx) in FREQUENCY_BIN_PICK_INDEX_LIST.iter().enumerate() {
+                    if bin_idx < fft_scratch.len() {
+                        let magnitude = fft_scratch[bin_idx].norm() / FFT_SIZE as f32;
+                        let db = if magnitude > 0.0 {
+                            20.0 * magnitude.log10()
+                        } else {
+                            DB_FLOOR
+                        };
+                        levels[index] = normalize_db(db);
                     }
-                    fft.process(&mut fft_scratch);
-
-                    let mut levels = [0.0f32; 6];
-                    for (index, &bin_idx) in FREQUENCY_BIN_PICK_INDEX_LIST.iter().enumerate() {
-                        if bin_idx < fft_scratch.len() {
-                            let magnitude = fft_scratch[bin_idx].norm() / FFT_SIZE as f32;
-                            let db = if magnitude > 0.0 {
-                                20.0 * magnitude.log10()
-                            } else {
-                                DB_FLOOR
-                            };
-                            levels[index] = normalize_db(db);
-                        }
-                    }
-
-                    let _ = app_for_callback.emit("audio:waveform", WaveformPayload { levels });
-                    last_emit = Instant::now();
                 }
-            },
-            move |err| {
-                eprintln!("[audio-recorder] Stream error: {}", err);
-            },
-            None,
-        )
-        .map_err(|e| AudioRecorderError::BuildStream(e.to_string()))
+
+                let _ = app_for_callback.emit("audio:waveform", WaveformPayload { levels });
+                last_emit = Instant::now();
+            }
+        },
+        move |err| {
+            eprintln!("[audio-recorder] Stream error: {}", err);
+        },
+        None,
+    );
+
+    map_build_stream_error(build_result)
+}
+
+/// Map a `cpal::BuildStreamError` to the appropriate `AudioRecorderError` variant.
+fn map_build_stream_error(
+    result: Result<cpal::Stream, cpal::BuildStreamError>,
+) -> Result<cpal::Stream, AudioRecorderError> {
+    result.map_err(|e| match e {
+        cpal::BuildStreamError::DeviceNotAvailable => {
+            AudioRecorderError::DeviceNotAvailable(e.to_string())
+        }
+        cpal::BuildStreamError::StreamConfigNotSupported => {
+            AudioRecorderError::StreamConfigNotSupported(e.to_string())
+        }
+        cpal::BuildStreamError::InvalidArgument => {
+            AudioRecorderError::StreamConfigNotSupported(e.to_string())
+        }
+        cpal::BuildStreamError::BackendSpecific { err } => {
+            let desc = err.description.to_lowercase();
+            if desc.contains("in use")
+                || desc.contains("audclnt_e_device_in_use")
+                || desc.contains("exclusive")
+            {
+                AudioRecorderError::DeviceInUse(err.description)
+            } else if desc.contains("unsupported")
+                || desc.contains("audclnt_e_unsupported_format")
+                || desc.contains("format")
+            {
+                AudioRecorderError::StreamConfigNotSupported(err.description)
+            } else if desc.contains("not found")
+                || desc.contains("not available")
+                || desc.contains("disconnected")
+            {
+                AudioRecorderError::DeviceNotAvailable(err.description)
+            } else {
+                AudioRecorderError::BackendError(err.description)
+            }
+        }
+    })
 }
 
 // ========== WAV Encoding ==========
@@ -921,8 +1005,8 @@ pub fn read_recording_file(id: String, app: AppHandle) -> Result<Response, Strin
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
 
     let file_path = app_data_dir.join("recordings").join(format!("{}.wav", id));
-    let data = std::fs::read(&file_path)
-        .map_err(|e| format!("Failed to read recording file: {}", e))?;
+    let data =
+        std::fs::read(&file_path).map_err(|e| format!("Failed to read recording file: {}", e))?;
     Ok(Response::new(data))
 }
 

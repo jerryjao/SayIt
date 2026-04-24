@@ -290,9 +290,10 @@
     "mic": {
       "default": "麥克風初始化失敗",
       "permission": "需要麥克風權限才能錄音",
-      "notFound": "未偵測到麥克風裝置",
-      "busy": "麥克風被其他程式佔用",
-      "configFailed": "麥克風設定讀取失敗"
+      "notFound": "未偵測到麥克風裝置，請檢查裝置是否正確連接",
+      "busy": "麥克風被其他程式佔用，請關閉 Zoom／Teams／Discord 等正在使用麥克風的程式後再試",
+      "configFailed": "麥克風設定不支援，請於 Windows 音效設定切換取樣率或更換裝置",
+      "backend": "麥克風驅動發生錯誤，請重新插拔裝置或重新啟動應用程式"
     },
     "network": "網路連線中斷",
     "transcription": {

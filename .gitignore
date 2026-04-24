@@ -33,3 +33,4 @@ playwright/.auth/
 # Tauri signing keys
 *.key
 *.key.pub
+package-lock.json
