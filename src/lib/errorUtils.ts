@@ -15,6 +15,18 @@ export function getMicrophoneErrorMessage(error: unknown): string {
   if (message.includes("No input device")) {
     return t("errors.mic.notFound");
   }
+  if (message.includes("Device in use")) {
+    return t("errors.mic.busy");
+  }
+  if (message.includes("Device not available")) {
+    return t("errors.mic.notFound");
+  }
+  if (message.includes("Stream config not supported")) {
+    return t("errors.mic.configFailed");
+  }
+  if (message.includes("Backend error")) {
+    return t("errors.mic.backend");
+  }
   if (message.includes("Failed to build audio stream")) {
     return t("errors.mic.busy");
   }

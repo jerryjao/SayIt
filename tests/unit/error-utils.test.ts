@@ -14,12 +14,16 @@ describe("getMicrophoneErrorMessage", () => {
 
   it("[P0] NotFoundError 應映射為裝置不存在訊息", () => {
     const error = new DOMException("No device found", "NotFoundError");
-    expect(getMicrophoneErrorMessage(error)).toBe("未偵測到麥克風裝置");
+    expect(getMicrophoneErrorMessage(error)).toBe(
+      "未偵測到麥克風裝置，請檢查裝置是否正確連接",
+    );
   });
 
   it("[P0] NotReadableError 應映射為裝置被佔用訊息", () => {
     const error = new DOMException("Device busy", "NotReadableError");
-    expect(getMicrophoneErrorMessage(error)).toBe("麥克風被其他程式佔用");
+    expect(getMicrophoneErrorMessage(error)).toBe(
+      "麥克風被其他程式佔用，請關閉 Zoom／Teams／Discord 等正在使用麥克風的程式後再試",
+    );
   });
 
   it("[P0] 未知 DOMException name 應回傳預設中文訊息", () => {
@@ -31,6 +35,44 @@ describe("getMicrophoneErrorMessage", () => {
     expect(getMicrophoneErrorMessage(new Error("Unknown"))).toBe(
       "麥克風初始化失敗",
     );
+  });
+
+  it("[P0] 'Device in use' 應映射為「被佔用」訊息", () => {
+    expect(
+      getMicrophoneErrorMessage(
+        new Error("Device in use (exclusive mode): AUDCLNT_E_DEVICE_IN_USE"),
+      ),
+    ).toBe(
+      "麥克風被其他程式佔用，請關閉 Zoom／Teams／Discord 等正在使用麥克風的程式後再試",
+    );
+  });
+
+  it("[P0] 'Device not available' 應映射為「未偵測到」訊息", () => {
+    expect(
+      getMicrophoneErrorMessage(
+        new Error("Device not available: The device has been disconnected"),
+      ),
+    ).toBe("未偵測到麥克風裝置，請檢查裝置是否正確連接");
+  });
+
+  it("[P0] 'Stream config not supported' 應映射為「設定不支援」訊息", () => {
+    expect(
+      getMicrophoneErrorMessage(
+        new Error(
+          "Stream config not supported: AUDCLNT_E_UNSUPPORTED_FORMAT",
+        ),
+      ),
+    ).toBe(
+      "麥克風設定不支援，請於 Windows 音效設定切換取樣率或更換裝置",
+    );
+  });
+
+  it("[P0] 'Backend error' 應映射為「驅動錯誤」訊息", () => {
+    expect(
+      getMicrophoneErrorMessage(
+        new Error("Backend error: unknown WASAPI error"),
+      ),
+    ).toBe("麥克風驅動發生錯誤，請重新插拔裝置或重新啟動應用程式");
   });
 });
 
