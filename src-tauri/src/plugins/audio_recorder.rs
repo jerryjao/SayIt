@@ -930,6 +930,9 @@ fn map_build_stream_error(
                 AudioRecorderError::BackendError(err.description)
             }
         }
+        cpal::BuildStreamError::StreamIdOverflow => {
+            AudioRecorderError::BackendError(e.to_string())
+        }
     })
 }
 
